@@ -2,9 +2,7 @@
  * 薬剤師人材紹介ダッシュボード
  * アプリケーションメインロジック (Ver. 2.0 - 拡張版)
  * 
- * ⚠️ DEVELOPER NOTICE:
- * このファイル内の計算ロジックや仕様を変更した場合は、必ずプロジェクトルートの `README.md` も合わせて更新してください。
- * 仕様の整合性を保つための必須ルールです。
+ * このファイル内の計算ロジックや仕様を変更した場合は、`README.md` もあわせて更新してください。
  */
 
 // アプリのグローバル状態
@@ -50,8 +48,8 @@ let charts = {
 // 1. 初期化処理
 // -------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
-  // 開発者向け仕様書メンテ警告ログ
-  console.log("%c⚠️ DEVELOPER NOTICE ⚠️\nダッシュボード仕様・数式の変更時は必ず README.md を更新してください！", "color: #ef4444; font-size: 14px; font-weight: bold;");
+  // 仕様変更時の更新案内ログ
+  console.log("%cダッシュボード仕様・数式の変更時は README.md も更新してください。", "color: #ef4444; font-size: 14px; font-weight: bold;");
 
   // Lucideアイコンのレンダリング
   lucide.createIcons();

@@ -1,7 +1,5 @@
 <!-- 
-  ⚠️ DEVELOPER WARNING ⚠️
-  このファイルのHTML構造、UI設計、または数式スライダーを変更した場合は、必ずプロジェクトルートの `README.md` も更新してください。
-  仕様書メンテは本プロジェクトの最優先ルールです。
+  このファイルのHTML構造、UI設計、または数式スライダーを変更した場合は、`README.md` もあわせて更新してください。
 -->
 <!DOCTYPE html>
 <html lang="ja" class="h-full">
@@ -54,7 +52,7 @@
         </div>
         <div>
           <h1 class="text-sm font-bold tracking-wider text-white">CAREER DASHBOARD</h1>
-          <p class="text-[10px] text-slate-400 font-medium tracking-tight">薬剤師人材紹介事業部</p>
+          <p class="text-[10px] text-slate-400 font-medium tracking-tight">薬剤師紹介チーム</p>
         </div>
       </div>
     </div>
@@ -64,7 +62,7 @@
       <label class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold px-2 mb-1.5 block">管理チーム</label>
       <div class="relative">
         <select id="teamSelector" class="w-full bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-blue cursor-pointer appearance-none">
-          <option value="all">全社 (薬剤師紹介CAチーム)</option>
+          <option value="all">全体 (薬剤師紹介CAチーム)</option>
           <option value="group1" selected>東京CA 第1グループ</option>
           <option value="group2">東京CA 第2グループ</option>
           <option value="group3">東京CA 第3グループ</option>
@@ -1056,13 +1054,13 @@
 
   </main>
 
-  <!-- 開発者向け仕様書メンテ警告フッター -->
+  <!-- 仕様更新案内フッター -->
   <div class="fixed bottom-4 right-4 z-[9999] max-w-sm glass-panel rounded-xl p-3 border border-red-500/30 shadow-[0_0_20px_rgba(239,68,68,0.15)] flex items-center gap-3">
     <div class="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 flex-shrink-0">
       <i data-lucide="alert-triangle" class="w-4 h-4 animate-pulse"></i>
     </div>
     <div class="flex-1 text-left">
-      <h6 class="text-xs font-bold text-red-400">DEVELOPER NOTICE</h6>
+      <h6 class="text-xs font-bold text-red-400">UPDATE NOTICE</h6>
       <p class="text-[10px] text-slate-400">
         仕様・数式変更時は必ず <a href="README.md" class="underline hover:text-white transition">README.md</a> も更新してください。
       </p>
