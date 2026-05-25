@@ -1,5 +1,5 @@
 /**
- * 薬剤師人材紹介ダッシュボード
+ * 営業ダッシュボード
  * アプリケーションメインロジック (Ver. 2.0 - 拡張版)
  * 
  * このファイル内の計算ロジックや仕様を変更した場合は、`README.md` もあわせて更新してください。
@@ -12,6 +12,7 @@ const state = {
   selectedTeam: 'group1',
   selectedMember: 'suzuki',
   leaderboardMetric: 'calls',
+  selectedFunnelLayer: 'overall',
   // 市場調査用サブタブと選択エリア
   currentMarketSubTab: 'pref',
   selectedAreaId: 'kanto',
@@ -72,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // 日本全国需給ヒートマップの初期化 (NEW)
-  if (typeof initJapanMap === 'function') {
+  if (typeof initJapanMap === 'function' && document.getElementById('japan-map-container')) {
     initJapanMap();
   }
 });
@@ -85,9 +86,16 @@ function initEventListeners() {
     teamSel.addEventListener('change', (e) => {
       state.selectedTeam = e.target.value;
       updatePageContext();
-      
-      // モックとして、数値をランダムに微小変化させて連動感を出す
-      simulateDataRefresh();
+      renderAll();
+    });
+  }
+
+  const memberSel = document.getElementById('memberSelector');
+  if (memberSel) {
+    memberSel.addEventListener('change', (e) => {
+      state.selectedMember = e.target.value;
+      updatePageContext();
+      renderAll();
     });
   }
 
@@ -141,8 +149,8 @@ function initEventListeners() {
 window.switchTab = function(tabId) {
   state.currentTab = tabId;
 
-  // ナビゲーションボタンのアクティブクラス制御 (6個のタブ)
-  const tabs = ['overview', 'funnel', 'correlation', 'diagnostic', 'market', 'area-manager'];
+  // ナビゲーションボタンのアクティブクラス制御
+  const tabs = ['overview', 'funnel', 'correlation'];
   tabs.forEach(t => {
     const btn = document.getElementById(`tab-btn-${t}`);
     const content = document.getElementById(`tab-content-${t}`);
@@ -161,24 +169,18 @@ window.switchTab = function(tabId) {
   // ポップオーバーが開いていたら閉じる
   closeRiskPopover();
 
-  // 各タブ固有のレンダリング処理
-  if (tabId === 'market') {
-    renderAreaMarket();
-  } else if (tabId === 'area-manager') {
-    renderAreaManager();
-  }
-
-  // グラフのリサイズ・再描画 (ApexChartsが非表示タブから表示される際に表示崩れを防ぐため)
-  setTimeout(() => {
-    Object.values(charts).forEach(chart => {
-      if (chart) chart.windowResize();
-    });
-  }, 100);
+  renderAll();
 };
 
 function getSelectedTeamText() {
   const selector = document.getElementById('teamSelector');
   if (!selector) return '東京CA 第1グループ';
+  return selector.options[selector.selectedIndex].text;
+}
+
+function getSelectedMemberText() {
+  const selector = document.getElementById('memberSelector');
+  if (!selector) return '担当者B';
   return selector.options[selector.selectedIndex].text;
 }
 
@@ -195,12 +197,9 @@ function getPeriodText() {
 function updatePageContext() {
   const selectedTeam = getSelectedTeamText();
   const titles = {
-    overview: `司令塔サマリー (${selectedTeam})`,
-    funnel: `チーム別ファネル (${selectedTeam})`,
-    correlation: `メンバー指導 (${selectedTeam})`,
-    diagnostic: `個別処方箋 (${selectedTeam})`,
-    market: '市場・求人戦略 (全エリア)',
-    'area-manager': 'エリア定義管理 (カスタム営業エリア設定)'
+    overview: 'ファネル分析',
+    funnel: '売上進捗',
+    correlation: '市況分析'
   };
 
   const titleEl = document.getElementById('currentTabTitle');
@@ -208,7 +207,26 @@ function updatePageContext() {
 
   const funnelTargetEl = document.getElementById('funnel-target-label');
   if (funnelTargetEl) funnelTargetEl.textContent = selectedTeam;
+
+  const memberFunnelTargetEl = document.getElementById('member-funnel-target-label');
+  if (memberFunnelTargetEl) memberFunnelTargetEl.textContent = getSelectedMemberText();
 }
+
+window.setFunnelLayer = function(layerId) {
+  state.selectedFunnelLayer = layerId;
+  ['overall', 'team', 'member'].forEach(layer => {
+    const btn = document.getElementById(`layer-btn-${layer}`);
+    const content = document.getElementById(`funnel-layer-${layer}`);
+    if (btn) {
+      btn.className = layer === layerId
+        ? 'funnel-layer-btn px-4 py-2 rounded-lg text-white bg-slate-800'
+        : 'funnel-layer-btn px-4 py-2 rounded-lg text-slate-400 hover:text-white';
+    }
+    if (content) {
+      content.classList.toggle('hidden', layer !== layerId);
+    }
+  });
+};
 
 // 期間の変更 (当月・先月・Q1・年度の積み上げ)
 window.setPeriod = function(periodId) {
@@ -404,24 +422,983 @@ function simulateDataRefresh() {
 // -------------------------------------------------------------
 
 function renderAll() {
-  renderTeamComparison();
-  renderFunnel(); // 動的ファネルの追加
-  renderActivityFeed();
-  renderLeaderboard();
-  updateSimulation();
-  loadMemberDiagnostic();
-  renderRiskTable();
-  renderYomiPipeline();
-  renderPostJoiningFollowups();
-  renderLeadResponseTime();
-  renderHourlyConnectionMeters();
+  renderLayerFunnels();
+  renderRevenueProgress();
+  renderMarketOverview();
+  setFunnelLayer(state.selectedFunnelLayer);
+}
 
-  // Ver 4.0 エリア別およびエリア定義管理のレンダリング連動
-  if (state.currentTab === 'market') {
-    renderAreaMarket();
-  } else if (state.currentTab === 'area-manager') {
-    renderAreaManager();
+const FUNNEL_STAGES = [
+  { name: "登録", fullName: "新規登録者", key: "registrations", icon: "user-plus", accent: "slate" },
+  { name: "面談設定", fullName: "新規面談設定", key: "bookings", icon: "calendar-plus", accent: "blue" },
+  { name: "面談実施", fullName: "新規面談実施", key: "interviews", icon: "messages-square", accent: "cyan" },
+  { name: "求人提案", fullName: "求人マッチング提案", key: "proposals", icon: "sparkles", accent: "purple" },
+  { name: "推薦", fullName: "推薦承諾・書類提出", key: "recommendations", icon: "send", accent: "pink" },
+  { name: "面接", fullName: "面接実施", key: "setups", icon: "briefcase-business", accent: "amber" },
+  { name: "決定", fullName: "内定承諾・決定", key: "placements", icon: "badge-check", accent: "emerald" }
+];
+
+const FUNNEL_STAGE_CLASSES = {
+  slate: { icon: 'bg-slate-500/10 border-slate-500/20 text-slate-300', bar: 'from-slate-500 to-slate-400', text: 'text-slate-300' },
+  blue: { icon: 'bg-brand-blue/10 border-brand-blue/20 text-brand-blue', bar: 'from-brand-blue to-blue-400', text: 'text-brand-blue' },
+  cyan: { icon: 'bg-brand-cyan/10 border-brand-cyan/20 text-brand-cyan', bar: 'from-brand-cyan to-cyan-300', text: 'text-brand-cyan' },
+  purple: { icon: 'bg-brand-purple/10 border-brand-purple/20 text-brand-purple', bar: 'from-brand-purple to-violet-400', text: 'text-brand-purple' },
+  pink: { icon: 'bg-pink-500/10 border-pink-500/20 text-pink-400', bar: 'from-pink-500 to-rose-400', text: 'text-pink-400' },
+  amber: { icon: 'bg-brand-amber/10 border-brand-amber/20 text-brand-amber', bar: 'from-brand-amber to-yellow-300', text: 'text-brand-amber' },
+  emerald: { icon: 'bg-brand-emerald/10 border-brand-emerald/20 text-brand-emerald', bar: 'from-brand-emerald to-emerald-300', text: 'text-brand-emerald' }
+};
+
+function getFunnelAdvices() {
+  return {
+    bookings: {
+      title: "登録 → 面談設定",
+      owner: "CAリーダー",
+      action: "初動10分以内の架電と、平日19時以降・土曜の接続率が高い時間帯へコールを寄せる。",
+      lever: "初回接触SLA / 架電時間帯"
+    },
+    interviews: {
+      title: "面談設定 → 面談実施",
+      owner: "CAリーダー",
+      action: "面談日は3日以内に寄せ、前日リマインドと当日30分前確認でキャンセルを防ぐ。",
+      lever: "面談リマインド / 日程短縮"
+    },
+    proposals: {
+      title: "面談実施 → 求人提案",
+      owner: "CA/RA",
+      action: "面談当日に3大本音を埋め、RAと即時すり合わせして候補者別の提案理由を作る。",
+      lever: "ヒアリング充足 / 当日求人提案"
+    },
+    recommendations: {
+      title: "求人提案 → 推薦",
+      owner: "CA",
+      action: "大量提案を止め、3〜4件の厳選求人に絞って推薦理由を候補者の本音に接続する。",
+      lever: "提案厳選 / 推薦理由"
+    },
+    setups: {
+      title: "推薦 → 面接",
+      owner: "RAリーダー",
+      action: "推薦後24時間以内の企業打診を徹底し、書類選考理由と日程候補を即日回収する。",
+      lever: "企業打診SLA / 選考回収"
+    },
+    placements: {
+      title: "面接 → 決定",
+      owner: "CA/RA",
+      action: "面接前対策を80%以上へ戻し、面接直後の意向回収と他社比較の不安潰しを即日実施する。",
+      lever: "面接前対策 / 意向グリップ"
+    }
+  };
+}
+
+function aggregateFunnelData() {
+  const totals = {};
+  FUNNEL_STAGES.forEach(stage => {
+    totals[stage.key] = { actual: 0, target: 0 };
+  });
+
+  Object.values(dashboardData.teamsData || {}).forEach(team => {
+    FUNNEL_STAGES.forEach(stage => {
+      totals[stage.key].actual += team.funnel[stage.key]?.actual || 0;
+      totals[stage.key].target += team.funnel[stage.key]?.target || 0;
+    });
+  });
+
+  return totals;
+}
+
+function findFunnelBottleneck(fData) {
+  let worst = null;
+
+  for (let i = 1; i < FUNNEL_STAGES.length; i++) {
+    const stage = FUNNEL_STAGES[i];
+    const prevStage = FUNNEL_STAGES[i - 1];
+    const actualRate = fData[prevStage.key].actual > 0 ? (fData[stage.key].actual / fData[prevStage.key].actual) * 100 : 0;
+    const targetRate = fData[prevStage.key].target > 0 ? (fData[stage.key].target / fData[prevStage.key].target) * 100 : 0;
+    const gap = actualRate - targetRate;
+    const expectedActual = fData[prevStage.key].actual * (targetRate / 100);
+    const missingAtStage = Math.max(0, expectedActual - fData[stage.key].actual);
+    const downstreamTargetConversion = fData[stage.key].target > 0
+      ? fData.placements.target / fData[stage.key].target
+      : 0;
+    const lostPlacements = missingAtStage * downstreamTargetConversion;
+
+    if (!worst || gap < worst.gap) {
+      worst = {
+        stage,
+        prevStage,
+        actualRate,
+        targetRate,
+        gap,
+        missingAtStage,
+        lostPlacements,
+        revenueImpact: lostPlacements * 1250000
+      };
+    }
   }
+
+  return worst;
+}
+
+function getTeamBottleneckScore(team, bottleneckKey) {
+  const stageIndex = FUNNEL_STAGES.findIndex(stage => stage.key === bottleneckKey);
+  if (stageIndex <= 0) return 0;
+
+  const stage = FUNNEL_STAGES[stageIndex];
+  const prevStage = FUNNEL_STAGES[stageIndex - 1];
+  const prevActual = team.funnel[prevStage.key]?.actual || 0;
+  const prevTarget = team.funnel[prevStage.key]?.target || 0;
+  const actual = team.funnel[stage.key]?.actual || 0;
+  const target = team.funnel[stage.key]?.target || 0;
+  const actualRate = prevActual > 0 ? (actual / prevActual) * 100 : 0;
+  const targetRate = prevTarget > 0 ? (target / prevTarget) * 100 : 0;
+
+  return actualRate - targetRate;
+}
+
+function renderGlobalFunnel() {
+  const stepsContainer = document.getElementById('globalFunnelSteps');
+  const bottleneckPanel = document.getElementById('globalBottleneckPanel');
+  const criticalTeamList = document.getElementById('criticalTeamList');
+  const actionPlanList = document.getElementById('actionPlanList');
+  if (!stepsContainer || !bottleneckPanel || !criticalTeamList || !actionPlanList || !dashboardData.teamsData) return;
+
+  const fData = aggregateFunnelData();
+  const bottleneck = findFunnelBottleneck(fData);
+  const advices = getFunnelAdvices();
+  const advice = advices[bottleneck.stage.key];
+  const registrations = fData.registrations.actual || 1;
+  const placementRate = fData.placements.target > 0 ? (fData.placements.actual / fData.placements.target) * 100 : 0;
+  const confidence = placementRate >= 100 ? '高' : placementRate >= 85 ? '中' : '低';
+  const confidenceClass = placementRate >= 100 ? 'text-brand-emerald' : placementRate >= 85 ? 'text-brand-amber' : 'text-rose-300';
+
+  const confidenceEl = document.getElementById('global-funnel-confidence');
+  const placementRateEl = document.getElementById('global-funnel-placement-rate');
+  const revenueImpactEl = document.getElementById('global-funnel-revenue-impact');
+  if (confidenceEl) {
+    confidenceEl.textContent = confidence;
+    confidenceEl.className = `block text-lg ${confidenceClass} font-extrabold mt-0.5`;
+  }
+  if (placementRateEl) placementRateEl.textContent = `${placementRate.toFixed(0)}%`;
+  if (revenueImpactEl) revenueImpactEl.textContent = `-${(bottleneck.revenueImpact / 10000).toFixed(0)}万`;
+
+  stepsContainer.innerHTML = FUNNEL_STAGES.map((stage, index) => {
+    const metric = fData[stage.key];
+    const classSet = FUNNEL_STAGE_CLASSES[stage.accent];
+    const achievement = metric.target > 0 ? (metric.actual / metric.target) * 100 : 0;
+    const overallRate = (metric.actual / registrations) * 100;
+    const isBottleneck = stage.key === bottleneck.stage.key && bottleneck.gap < 0;
+    const prevMetric = index > 0 ? fData[FUNNEL_STAGES[index - 1].key] : null;
+    const transitionRate = prevMetric && prevMetric.actual > 0 ? (metric.actual / prevMetric.actual) * 100 : 100;
+    const transitionLabel = index === 0 ? '起点' : `前工程比 ${transitionRate.toFixed(1)}%`;
+
+    return `
+      <div class="funnel-stage-card ${isBottleneck ? 'is-bottleneck' : ''} bg-slate-950/35 border border-slate-800/70 rounded-2xl p-4 relative overflow-hidden">
+        <div class="flex items-start justify-between gap-2 mb-3">
+          <div class="flex items-center gap-2">
+            <span class="w-8 h-8 rounded-xl border ${classSet.icon} flex items-center justify-center">
+              <i data-lucide="${stage.icon}" class="w-4 h-4"></i>
+            </span>
+            <div>
+              <h4 class="text-xs font-extrabold text-white">${stage.name}</h4>
+              <p class="text-[9px] text-slate-500 font-semibold">${transitionLabel}</p>
+            </div>
+          </div>
+          ${isBottleneck ? '<span class="px-1.5 py-0.5 rounded bg-rose-500/15 border border-rose-500/25 text-rose-300 text-[8px] font-bold">詰まり</span>' : ''}
+        </div>
+        <div class="flex items-baseline justify-between mb-2">
+          <strong class="text-lg text-white font-extrabold">${metric.actual.toLocaleString()}</strong>
+          <span class="text-[10px] text-slate-400">目標 ${metric.target.toLocaleString()}</span>
+        </div>
+        <div class="w-full h-2 rounded-full bg-slate-800/80 overflow-hidden border border-slate-700/40">
+          <div class="h-full bg-gradient-to-r ${classSet.bar} rounded-full" style="width: ${Math.min(achievement, 120)}%"></div>
+        </div>
+        <div class="flex items-center justify-between mt-2 text-[9px]">
+          <span class="${classSet.text} font-bold">達成率 ${achievement.toFixed(0)}%</span>
+          <span class="text-slate-500">登録比 ${overallRate.toFixed(1)}%</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  bottleneckPanel.innerHTML = `
+    <div class="flex items-center gap-2 mb-4">
+      <div class="w-9 h-9 rounded-2xl bg-rose-500/10 border border-rose-500/25 text-rose-300 flex items-center justify-center">
+        <i data-lucide="shield-alert" class="w-4 h-4"></i>
+      </div>
+      <div>
+        <h4 class="text-sm font-bold text-white">最大ボトルネック</h4>
+        <p class="text-[10px] text-slate-500">全体ファネルから自動検出</p>
+      </div>
+    </div>
+    <div class="bg-rose-500/5 border border-rose-500/15 rounded-2xl p-4 mb-4">
+      <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">工程</span>
+      <h3 class="text-lg font-extrabold text-white mt-1">${advice.title}</h3>
+      <div class="flex items-center gap-2 mt-2 text-[10px]">
+        <span class="px-2 py-0.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-300 font-bold">目標比 ${bottleneck.gap.toFixed(1)}pt</span>
+        <span class="text-slate-500">不足 ${bottleneck.missingAtStage.toFixed(1)}件</span>
+      </div>
+    </div>
+    <div class="space-y-3 text-xs">
+      <div>
+        <span class="block text-[9.5px] text-slate-500 font-bold uppercase tracking-wider mb-1">売上影響</span>
+        <strong class="text-2xl text-rose-200 font-extrabold">-${(bottleneck.revenueImpact / 10000).toFixed(0)}万円</strong>
+      </div>
+      <div>
+        <span class="block text-[9.5px] text-slate-500 font-bold uppercase tracking-wider mb-1">改善レバー</span>
+        <p class="text-brand-amber font-bold leading-relaxed">${advice.lever}</p>
+      </div>
+    </div>
+  `;
+
+  const criticalTeams = Object.entries(dashboardData.teamsData)
+    .map(([teamId, team]) => ({
+      teamId,
+      team,
+      gap: getTeamBottleneckScore(team, bottleneck.stage.key)
+    }))
+    .sort((a, b) => a.gap - b.gap)
+    .slice(0, 3);
+
+  criticalTeamList.innerHTML = criticalTeams.map((item, index) => {
+    const badgeClass = index === 0
+      ? 'bg-rose-500/10 border-rose-500/20 text-rose-300'
+      : 'bg-brand-amber/10 border-brand-amber/20 text-brand-amber';
+    return `
+      <button onclick="selectTeamAndScroll('${item.teamId}')" class="w-full text-left p-3 rounded-2xl bg-slate-950/30 border border-slate-800/70 hover:border-brand-blue/35 hover:bg-slate-900/60 transition group">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <span class="text-[9px] text-slate-500 font-bold">#${index + 1} 要介入</span>
+            <h5 class="text-xs text-white font-bold mt-0.5 group-hover:text-brand-cyan transition">${item.team.name}</h5>
+          </div>
+          <span class="px-2 py-0.5 rounded-full border ${badgeClass} text-[9px] font-bold">${item.gap.toFixed(1)}pt</span>
+        </div>
+      </button>
+    `;
+  }).join('');
+
+  const actionItems = [
+    { icon: 'timer-reset', title: `${advice.owner}がSLAを戻す`, body: advice.action },
+    { icon: 'users-round', title: `対象チームを夕会で棚卸し`, body: criticalTeams.map(item => item.team.name).join(' / ') + ' の該当案件を工程別に確認する。' },
+    { icon: 'line-chart', title: '明日の確認指標', body: `${advice.title} の移行率を目標比 -5pt 以内まで戻せたかを見る。` }
+  ];
+
+  actionPlanList.innerHTML = actionItems.map((item, index) => `
+    <div class="bg-slate-950/30 border border-slate-800/70 rounded-2xl p-4">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="w-7 h-7 rounded-xl bg-brand-emerald/10 border border-brand-emerald/20 text-brand-emerald flex items-center justify-center">
+          <i data-lucide="${item.icon}" class="w-3.5 h-3.5"></i>
+        </span>
+        <span class="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Action ${index + 1}</span>
+      </div>
+      <h5 class="text-xs font-bold text-white mb-1">${item.title}</h5>
+      <p class="text-[10.5px] text-slate-400 leading-relaxed">${item.body}</p>
+    </div>
+  `).join('');
+
+  lucide.createIcons();
+}
+
+function memberToFunnelData(member) {
+  const bookings = Math.max(
+    member.metrics.interviews,
+    Math.round(member.metrics.calls * (member.metrics.connection_rate / 100) * (member.metrics.booking_rate / 100))
+  );
+  const proposals = Math.round(member.metrics.interviews * member.metrics.proposals_per_int);
+
+  return {
+    registrations: { actual: member.metrics.calls, target: 450 },
+    bookings: { actual: bookings, target: 35 },
+    interviews: { actual: member.metrics.interviews, target: 30 },
+    proposals: { actual: proposals, target: 120 },
+    recommendations: { actual: member.metrics.recommendations, target: 22 },
+    setups: { actual: member.metrics.interviews_set, target: 11 },
+    placements: { actual: member.metrics.placements, target: 4 }
+  };
+}
+
+function renderLayerFunnels() {
+  renderFunnelAnalysis(
+    aggregateFunnelData(),
+    'overviewFunnelStepsContainer',
+    'overviewFunnelBottleneckContainer',
+    'overall'
+  );
+
+  const team = dashboardData.teamsData[state.selectedTeam] || dashboardData.teamsData.group1;
+  renderFunnelAnalysis(
+    team.funnel,
+    'funnelStepsContainer',
+    'funnelBottleneckContainer',
+    'team'
+  );
+
+  const member = dashboardData.members.find(m => m.id === state.selectedMember) || dashboardData.members[1];
+  renderFunnelAnalysis(
+    memberToFunnelData(member),
+    'memberFunnelStepsContainer',
+    'memberFunnelBottleneckContainer',
+    'member'
+  );
+
+  renderFunnelSummaryList(
+    'teamFunnelSummaryGrid',
+    Object.entries(dashboardData.teamsData).map(([id, teamData]) => ({
+      id,
+      name: teamData.name,
+      caption: teamData.leader,
+      funnel: teamData.funnel,
+      onClick: `selectTeamAndScroll('${id}')`
+    }))
+  );
+
+  const memberItems = dashboardData.members.map(memberData => ({
+    id: memberData.id,
+    name: memberData.name,
+    caption: memberData.role,
+    funnel: memberToFunnelData(memberData),
+    onClick: `selectMemberAndScroll('${memberData.id}')`
+  }));
+
+  renderFunnelSummaryList('memberFunnelSummaryGrid', memberItems);
+  renderFunnelSummaryList('allMemberFunnelSummaryGrid', memberItems);
+
+  updatePageContext();
+  lucide.createIcons();
+}
+
+function renderFunnelAnalysis(fData, stepsContainerId, bottleneckContainerId, scope = 'overall') {
+  const container = document.getElementById(stepsContainerId);
+  const bottleneckContainer = document.getElementById(bottleneckContainerId);
+  if (!container || !bottleneckContainer || !fData) return;
+
+  const regActual = fData.registrations.actual || 1;
+  const regTarget = fData.registrations.target || 1;
+  let htmlContent = '';
+
+  FUNNEL_STAGES.forEach((stage, index) => {
+    const actualVal = fData[stage.key].actual;
+    const targetVal = fData[stage.key].target;
+    const classes = FUNNEL_STAGE_CLASSES[stage.accent];
+    const achievement = targetVal > 0 ? (actualVal / targetVal) * 100 : 0;
+    const overallActualRate = regActual > 0 ? (actualVal / regActual) * 100 : 0;
+    const overallTargetRate = regTarget > 0 ? (targetVal / regTarget) * 100 : 0;
+    const panelId = `${stepsContainerId}-${stage.key}-actions`;
+    const actionItems = getProcessActionChecks(stage.key, fData, scope);
+
+    htmlContent += `
+      <div class="relative">
+        <button onclick="toggleProcessActions('${panelId}', this)" class="w-full text-left group">
+          <div class="flex justify-between items-center mb-1 text-[11px]">
+            <span class="font-bold flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full ${classes.text.replace('text-', 'bg-')}"></span>
+              ${index + 1}. ${stage.fullName}
+            </span>
+            <span class="text-slate-300 font-semibold flex items-center gap-2">
+              <span>
+                ${actualVal.toLocaleString()} / <span class="text-brand-emerald font-bold">目標 ${targetVal.toLocaleString()}</span>
+                <span class="text-[10px] text-slate-500 font-normal">
+                  (${index === 0 ? `達成率 ${achievement.toFixed(0)}%` : `全体比 ${overallActualRate.toFixed(1)}% / 目標 ${overallTargetRate.toFixed(1)}%`})
+                </span>
+              </span>
+              <i data-lucide="chevron-down" class="process-action-chevron w-3.5 h-3.5 text-slate-500 transition-transform group-hover:text-brand-cyan"></i>
+            </span>
+          </div>
+          <div class="w-full bg-slate-800/60 rounded-lg h-8 relative flex items-center overflow-hidden border border-slate-800 group-hover:border-brand-blue/30 transition">
+            <div class="bg-gradient-to-r ${classes.bar} h-full rounded-l-lg opacity-85 transition-all duration-500" style="width: ${Math.min(overallActualRate, 100)}%"></div>
+            <span class="absolute left-3 text-xs font-bold text-white drop-shadow">${overallActualRate.toFixed(1)}%</span>
+            <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(overallTargetRate, 100)}%" title="目標全体比: ${overallTargetRate.toFixed(1)}%"></div>
+          </div>
+        </button>
+        <div id="${panelId}" class="process-action-panel hidden overflow-hidden">
+          <div class="mt-2 p-3 rounded-xl bg-slate-950/35 border border-slate-800/70 grid grid-cols-1 md:grid-cols-3 gap-3">
+            ${actionItems.map(item => {
+              const itemClass = item.rate >= 100
+                ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                : item.rate >= 80
+                  ? 'text-brand-amber bg-brand-amber/10 border-brand-amber/20'
+                  : 'text-rose-400 bg-rose-500/10 border-rose-500/20';
+              return `
+                <div class="rounded-xl bg-slate-900/50 border border-slate-800/70 p-3">
+                  <div class="flex items-start justify-between gap-2 mb-2">
+                    <div>
+                      <h6 class="text-[10px] font-bold text-white">${item.label}</h6>
+                      <p class="text-[8.5px] text-slate-500 mt-0.5">${item.reason}</p>
+                    </div>
+                    <span class="px-1.5 py-0.5 rounded border ${itemClass} text-[8px] font-bold">${item.rate.toFixed(0)}%</span>
+                  </div>
+                  <div class="flex justify-between text-[9px] text-slate-400 mb-1">
+                    <span>実施 ${item.actual.toLocaleString()}${item.unit}</span>
+                    <span>基準 ${item.target.toLocaleString()}${item.unit}</span>
+                  </div>
+                  <div class="h-1.5 bg-slate-800/80 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full bg-gradient-to-r from-brand-blue to-brand-cyan" style="width: ${Math.min(item.rate, 100)}%"></div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    if (index < FUNNEL_STAGES.length - 1) {
+      const nextStage = FUNNEL_STAGES[index + 1];
+      const nextActualVal = fData[nextStage.key].actual;
+      const nextTargetVal = fData[nextStage.key].target;
+      const prevStepActualRate = actualVal > 0 ? (nextActualVal / actualVal) * 100 : 0;
+      const prevStepTargetRate = targetVal > 0 ? (nextTargetVal / targetVal) * 100 : 0;
+      const gap = prevStepActualRate - prevStepTargetRate;
+      const gapSign = gap >= 0 ? '+' : '';
+      const gapClass = gap >= 0
+        ? 'text-emerald-400 font-bold bg-emerald-500/10 border-emerald-500/20'
+        : 'text-rose-400 font-bold bg-rose-500/10 border-rose-500/20';
+
+      htmlContent += `
+        <div class="my-1.5">
+          <div class="w-full flex items-center justify-between px-3 py-1.5 rounded-lg bg-slate-900/20 border border-slate-800/40 text-[9.5px]">
+            <span class="text-slate-400 font-semibold flex items-center gap-1">
+              <i data-lucide="arrow-down" class="w-3.5 h-3.5 text-slate-500"></i>
+              <span>全工程比:</span>
+            </span>
+            <div class="flex items-center gap-2.5">
+              <span class="text-slate-300">実績: <strong class="text-white">${prevStepActualRate.toFixed(1)}%</strong></span>
+              <span class="text-slate-600">|</span>
+              <span class="text-slate-400">目標: <strong class="text-brand-emerald">${prevStepTargetRate.toFixed(1)}%</strong></span>
+              <span class="px-1.5 py-0.5 rounded border ${gapClass} text-[8.5px]">目標比 ${gapSign}${gap.toFixed(1)}pt</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  });
+
+  container.innerHTML = htmlContent;
+
+  const bottleneck = findFunnelBottleneck(fData);
+  const isHealthy = bottleneck.gap >= 0;
+  const advice = getFunnelAdvices()[bottleneck.stage.key] || {
+    title: `${bottleneck.prevStage.name} → ${bottleneck.stage.name}`,
+    action: '該当工程の案件を棚卸しし、目標移行率との差分を確認してください。',
+    lever: '工程別移行率'
+  };
+
+  bottleneckContainer.innerHTML = `
+    <div class="mt-5 p-4 rounded-xl ${isHealthy ? 'bg-emerald-500/5 border-emerald-500/15' : 'bg-rose-500/5 border-rose-500/15'} border flex items-start gap-3">
+      <div class="p-2 rounded-lg ${isHealthy ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'} border flex-shrink-0">
+        <i data-lucide="${isHealthy ? 'shield-check' : 'shield-alert'}" class="w-4 h-4"></i>
+      </div>
+      <div class="flex-1 min-w-0 text-left">
+        <div class="flex justify-between items-center gap-3 mb-1">
+          <h5 class="text-xs font-bold text-slate-200">ボトルネック: <span class="${isHealthy ? 'text-emerald-400' : 'text-rose-400'} font-bold">${advice.title}</span></h5>
+          <span class="px-2 py-0.5 rounded border ${isHealthy ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400' : 'border-rose-500/20 bg-rose-500/10 text-rose-400'} text-[8px] font-bold">
+            目標比 ${bottleneck.gap.toFixed(1)}pt
+          </span>
+        </div>
+        <p class="text-[10px] text-slate-400 leading-relaxed mt-0.5">${advice.action}</p>
+        <div class="mt-3 pt-2.5 border-t border-slate-800/40 flex items-center gap-2 text-[9.5px]">
+          <strong class="text-slate-300">改善レバー:</strong>
+          <span class="${isHealthy ? 'text-brand-blue' : 'text-brand-amber'} font-bold">${advice.lever}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderFunnelSummaryList(containerId, items) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  container.innerHTML = items.map(item => {
+    const fData = item.funnel;
+    const bottleneck = findFunnelBottleneck(fData);
+    const placementRate = fData.placements.target > 0 ? (fData.placements.actual / fData.placements.target) * 100 : 0;
+    const conversion = fData.interviews.actual > 0 ? (fData.placements.actual / fData.interviews.actual) * 100 : 0;
+    const statusClass = bottleneck.gap >= 0
+      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+      : bottleneck.gap >= -10
+        ? 'bg-brand-amber/10 border-brand-amber/20 text-brand-amber'
+        : 'bg-rose-500/10 border-rose-500/20 text-rose-400';
+
+    return `
+      <button onclick="${item.onClick}" class="w-full text-left p-3 rounded-2xl bg-slate-950/30 border border-slate-800/70 hover:border-brand-blue/35 hover:bg-slate-900/60 transition group">
+        <div class="flex items-start justify-between gap-3 mb-2">
+          <div class="min-w-0">
+            <h5 class="text-xs text-white font-bold truncate group-hover:text-brand-cyan transition">${item.name}</h5>
+            <p class="text-[9px] text-slate-500 truncate mt-0.5">${item.caption || ''}</p>
+          </div>
+          <span class="px-2 py-0.5 rounded-full border ${statusClass} text-[9px] font-bold">${placementRate.toFixed(0)}%</span>
+        </div>
+        <div class="grid grid-cols-3 gap-2 text-[9px] text-slate-400">
+          <span>面談 <strong class="text-white">${fData.interviews.actual}</strong></span>
+          <span>推薦 <strong class="text-white">${fData.recommendations.actual}</strong></span>
+          <span>決定 <strong class="text-white">${fData.placements.actual}</strong></span>
+        </div>
+        <div class="mt-2 w-full bg-slate-800/70 h-1.5 rounded-full overflow-hidden">
+          <div class="h-full rounded-full bg-gradient-to-r from-brand-blue to-brand-cyan" style="width: ${Math.min(placementRate, 100)}%"></div>
+        </div>
+        <div class="mt-2 flex justify-between text-[9px] text-slate-500">
+          <span>面談→決定 ${conversion.toFixed(1)}%</span>
+          <span>詰まり ${bottleneck.prevStage.name}→${bottleneck.stage.name}</span>
+        </div>
+      </button>
+    `;
+  }).join('');
+}
+
+function getProcessActionChecks(stageKey, fData, scope) {
+  const registrations = fData.registrations.actual || 1;
+  const bookings = fData.bookings.actual || 1;
+  const interviews = fData.interviews.actual || 1;
+  const proposals = fData.proposals.actual || 1;
+  const recommendations = fData.recommendations.actual || 1;
+  const setups = fData.setups.actual || 1;
+  const targetFactor = scope === 'member' ? 1 : 1;
+
+  const actionMap = {
+    registrations: [
+      {
+        label: '新規流入獲得',
+        actual: fData.registrations.actual,
+        target: fData.registrations.target,
+        unit: '件',
+        reason: 'ファネルの入口となる新規登録者を十分に獲得できているか'
+      },
+      {
+        label: '掘り起こし接触',
+        actual: Math.round(fData.registrations.actual * 0.82),
+        target: Math.round(fData.registrations.target * 0.85),
+        unit: '件',
+        reason: '既存・休眠候補者への再接触で入口を補えているか'
+      },
+      {
+        label: '求人訴求配信',
+        actual: Math.round(fData.registrations.actual * 0.76),
+        target: Math.round(fData.registrations.target * 0.8),
+        unit: '件',
+        reason: '登録を促す求人訴求やスカウト配信を実行できているか'
+      }
+    ],
+    bookings: [
+      {
+        label: '初動架電量',
+        actual: registrations,
+        target: fData.registrations.target,
+        unit: '件',
+        reason: '登録者へ十分に初回接触できているか'
+      },
+      {
+        label: '接続後の面談化',
+        actual: fData.bookings.actual,
+        target: Math.round(registrations * 0.75 * targetFactor),
+        unit: '件',
+        reason: '接続後に面談設定まで押し切れているか'
+      },
+      {
+        label: '即時対応SLA',
+        actual: Math.round(Math.min(100, (fData.bookings.actual / Math.max(fData.bookings.target, 1)) * 100)),
+        target: 100,
+        unit: '%',
+        reason: '10分以内初動などの基準を満たせているか'
+      }
+    ],
+    interviews: [
+      {
+        label: '面談リマインド',
+        actual: fData.interviews.actual,
+        target: Math.round(bookings * 0.82),
+        unit: '件',
+        reason: '設定後キャンセルを防ぐ事前確認ができているか'
+      },
+      {
+        label: '3日以内実施',
+        actual: Math.round(fData.interviews.actual * 0.9),
+        target: Math.round(bookings * 0.75),
+        unit: '件',
+        reason: '熱量が落ちる前に面談を実施できているか'
+      },
+      {
+        label: '再調整回収',
+        actual: Math.max(0, bookings - fData.interviews.actual),
+        target: Math.max(1, Math.round(bookings * 0.12)),
+        unit: '件',
+        reason: 'キャンセル分を再設定に戻せているか'
+      }
+    ],
+    proposals: [
+      {
+        label: '面談当日提案',
+        actual: fData.proposals.actual,
+        target: Math.round(interviews * 1.8),
+        unit: '件',
+        reason: '面談後すぐに求人提示まで進めているか'
+      },
+      {
+        label: '条件ヒアリング',
+        actual: Math.round(interviews * 0.78),
+        target: Math.round(interviews * 0.85),
+        unit: '件',
+        reason: '提案に必要な希望条件を握れているか'
+      },
+      {
+        label: 'RAすり合わせ',
+        actual: Math.round(interviews * 0.72),
+        target: Math.round(interviews * 0.8),
+        unit: '件',
+        reason: '求人側との当日連携ができているか'
+      }
+    ],
+    recommendations: [
+      {
+        label: '推薦意思確認',
+        actual: fData.recommendations.actual,
+        target: Math.round(proposals * 0.72),
+        unit: '件',
+        reason: '提案求人を推薦承諾まで進められているか'
+      },
+      {
+        label: '推薦理由説明',
+        actual: Math.round(fData.recommendations.actual * 0.86),
+        target: Math.round(fData.recommendations.target * 0.95),
+        unit: '件',
+        reason: '候補者に求人ごとの納得理由を伝えられているか'
+      },
+      {
+        label: '書類回収',
+        actual: Math.round(fData.recommendations.actual * 0.92),
+        target: fData.recommendations.target,
+        unit: '件',
+        reason: '推薦提出に必要な書類が滞留していないか'
+      }
+    ],
+    setups: [
+      {
+        label: '24h企業打診',
+        actual: fData.setups.actual,
+        target: Math.round(recommendations * 0.52),
+        unit: '件',
+        reason: '推薦後すぐ企業へ打診できているか'
+      },
+      {
+        label: '日程候補回収',
+        actual: Math.round(fData.setups.actual * 0.9),
+        target: Math.round(fData.setups.target * 0.95),
+        unit: '件',
+        reason: '面接設定に必要な候補日を回収できているか'
+      },
+      {
+        label: '選考理由回収',
+        actual: Math.round(recommendations * 0.42),
+        target: Math.round(recommendations * 0.5),
+        unit: '件',
+        reason: '書類選考の通過/NG理由を回収できているか'
+      }
+    ],
+    placements: [
+      {
+        label: '面接前対策',
+        actual: Math.round(setups * 0.7),
+        target: Math.round(setups * 0.8),
+        unit: '件',
+        reason: '面接前に志望動機整理・想定問答ができているか'
+      },
+      {
+        label: '面接後即日回収',
+        actual: Math.round(setups * 0.68),
+        target: Math.round(setups * 0.85),
+        unit: '件',
+        reason: '面接後の温度感と懸念を即日回収できているか'
+      },
+      {
+        label: '承諾クロージング',
+        actual: fData.placements.actual,
+        target: fData.placements.target,
+        unit: '件',
+        reason: '内定後の比較・辞退懸念を潰せているか'
+      }
+    ]
+  };
+
+  return (actionMap[stageKey] || []).map(item => ({
+    ...item,
+    target: Math.max(1, item.target),
+    rate: item.target > 0 ? (item.actual / item.target) * 100 : 0
+  }));
+}
+
+window.toggleProcessActions = function(panelId, trigger) {
+  const panel = document.getElementById(panelId);
+  if (!panel) return;
+
+  panel.classList.toggle('hidden');
+  panel.classList.toggle('process-action-panel-open');
+
+  const chevron = trigger?.querySelector('.process-action-chevron');
+  if (chevron) {
+    chevron.classList.toggle('rotate-180', !panel.classList.contains('hidden'));
+  }
+};
+
+window.setAllProcessActions = function(open) {
+  const activeLayer = document.querySelector('.funnel-layer-content:not(.hidden)');
+  const root = activeLayer || document;
+  root.querySelectorAll('.process-action-panel').forEach(panel => {
+    panel.classList.toggle('hidden', !open);
+    panel.classList.toggle('process-action-panel-open', open);
+  });
+  root.querySelectorAll('.process-action-chevron').forEach(chevron => {
+    chevron.classList.toggle('rotate-180', open);
+  });
+};
+
+function renderRevenueProgress() {
+  const kpiGrid = document.getElementById('revenueKpiGrid');
+  if (!kpiGrid) return;
+
+  const revenue = dashboardData.kpis.revenue;
+  const offers = dashboardData.kpis.offers;
+  const cumulativeTarget = getCumulativeArray(dashboardData.monthlyTrend.target);
+  const cumulativeActual = getCumulativeArray(dashboardData.monthlyTrend.actual);
+  const cumulativeForecast = getCumulativeArray(dashboardData.monthlyTrend.forecast);
+  const currentIndex = 5;
+  const forecast = cumulativeForecast[currentIndex];
+  const target = cumulativeTarget[currentIndex];
+  const actual = cumulativeActual[currentIndex];
+  const forecastGap = forecast - target;
+
+  const kpis = [
+    { label: '年度累計売上', value: `${actual.toLocaleString()}万`, sub: `累計目標 ${target.toLocaleString()}万`, pct: (actual / target) * 100, tone: 'blue' },
+    { label: '年度着地予測', value: `${forecast.toLocaleString()}万`, sub: `累計目標差 ${forecastGap >= 0 ? '+' : ''}${forecastGap.toLocaleString()}万`, pct: (forecast / target) * 100, tone: forecastGap >= 0 ? 'emerald' : 'amber' },
+    { label: '当月決定数', value: `${offers.value}件`, sub: `当月目標 ${offers.target}件`, pct: offers.achievementRate, tone: 'cyan' },
+    { label: '平均単価', value: `${dashboardData.unitPriceTrend.avgCommission.at(-1)}万`, sub: '紹介手数料', pct: 100, tone: 'purple' }
+  ];
+
+  kpiGrid.innerHTML = kpis.map(kpi => {
+    const color = {
+      blue: 'from-brand-blue to-brand-cyan text-brand-blue',
+      emerald: 'from-brand-emerald to-emerald-300 text-brand-emerald',
+      amber: 'from-brand-amber to-yellow-300 text-brand-amber',
+      cyan: 'from-brand-cyan to-cyan-300 text-brand-cyan',
+      purple: 'from-brand-purple to-violet-400 text-brand-purple'
+    }[kpi.tone];
+    return `
+      <div class="glass-panel rounded-2xl p-5">
+        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">${kpi.label}</p>
+        <div class="mt-2 flex items-end justify-between gap-3">
+          <strong class="text-2xl font-extrabold text-white">${kpi.value}</strong>
+          <span class="text-[10px] ${color.split(' ').at(-1)} font-bold">${kpi.pct.toFixed(0)}%</span>
+        </div>
+        <p class="text-[10px] text-slate-400 mt-1">${kpi.sub}</p>
+        <div class="mt-3 h-1.5 bg-slate-800/70 rounded-full overflow-hidden">
+          <div class="h-full rounded-full bg-gradient-to-r ${color.replace(` ${color.split(' ').at(-1)}`, '')}" style="width: ${Math.min(kpi.pct, 100)}%"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  renderRevenueProgressChart();
+  renderTeamRevenueList();
+  renderUnitPriceMiniChart();
+  renderLossReasonList();
+}
+
+function renderRevenueProgressChart() {
+  const el = document.getElementById('revenueProgressChart');
+  if (!el) return;
+
+  if (charts.revenueProgress) {
+    charts.revenueProgress.destroy();
+  }
+
+  const cumulativeTarget = getCumulativeArray(dashboardData.monthlyTrend.target);
+  const cumulativeActual = getCumulativeArray(dashboardData.monthlyTrend.actual);
+  const cumulativeForecast = getCumulativeArray(dashboardData.monthlyTrend.forecast);
+
+  charts.revenueProgress = new ApexCharts(el, {
+    series: [
+      { name: '年度累計目標', data: cumulativeTarget },
+      { name: '年度累計実績', data: cumulativeActual },
+      { name: '年度累計予測', data: cumulativeForecast }
+    ],
+    chart: { type: 'line', height: 320, background: 'transparent', toolbar: { show: false }, foreColor: '#94a3b8' },
+    colors: ['#60a5fa', '#10b981', '#f59e0b'],
+    stroke: { width: [3, 4, 3], curve: 'smooth', dashArray: [5, 0, 4] },
+    fill: { type: 'gradient', gradient: { shade: 'dark', opacityFrom: 0.24, opacityTo: 0.04 } },
+    labels: dashboardData.monthlyTrend.months,
+    markers: { size: [0, 5, 0] },
+    grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 4 },
+    yaxis: { labels: { formatter: value => `${value.toLocaleString()}万` } },
+    legend: { labels: { colors: '#94a3b8' } },
+    tooltip: { theme: 'dark', y: { formatter: value => `${value?.toLocaleString()}万円 (年度累計)` } }
+  });
+  charts.revenueProgress.render();
+}
+
+function renderTeamRevenueList() {
+  const container = document.getElementById('teamRevenueList');
+  if (!container) return;
+
+  const avgCommission = 125;
+  const teams = Object.values(dashboardData.teamsData)
+    .map(team => {
+      const actual = team.funnel.placements.actual * avgCommission;
+      const target = team.funnel.placements.target * avgCommission;
+      return { team, actual, target, pct: target > 0 ? (actual / target) * 100 : 0 };
+    })
+    .sort((a, b) => a.pct - b.pct);
+
+  container.innerHTML = teams.map(item => {
+    const status = item.pct >= 100 ? 'text-emerald-400' : item.pct >= 80 ? 'text-brand-amber' : 'text-rose-400';
+    return `
+      <div class="p-3 rounded-2xl bg-slate-950/30 border border-slate-800/70">
+        <div class="flex items-center justify-between gap-3 mb-2">
+          <div>
+            <h4 class="text-xs font-bold text-white">${item.team.name}</h4>
+            <p class="text-[9px] text-slate-500">${item.team.leader}</p>
+          </div>
+          <strong class="${status} text-xs">${item.pct.toFixed(0)}%</strong>
+        </div>
+        <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+          <span>実績 ${item.actual.toLocaleString()}万</span>
+          <span>目標 ${item.target.toLocaleString()}万</span>
+        </div>
+        <div class="h-1.5 bg-slate-800/70 rounded-full overflow-hidden">
+          <div class="h-full rounded-full bg-gradient-to-r from-brand-blue to-brand-cyan" style="width: ${Math.min(item.pct, 100)}%"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderUnitPriceMiniChart() {
+  const el = document.getElementById('unitPriceMiniChart');
+  if (!el) return;
+
+  if (charts.unitPriceMini) {
+    charts.unitPriceMini.destroy();
+  }
+
+  charts.unitPriceMini = new ApexCharts(el, {
+    series: [
+      { name: '紹介手数料', data: dashboardData.unitPriceTrend.avgCommission },
+      { name: '決定年収', data: dashboardData.unitPriceTrend.avgSalary }
+    ],
+    chart: { type: 'line', height: 260, background: 'transparent', toolbar: { show: false }, foreColor: '#94a3b8' },
+    colors: ['#06b6d4', '#8b5cf6'],
+    stroke: { width: 3, curve: 'smooth' },
+    labels: dashboardData.unitPriceTrend.months,
+    grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 4 },
+    legend: { labels: { colors: '#94a3b8' } },
+    yaxis: { labels: { formatter: value => `${value}万` } },
+    tooltip: { theme: 'dark', y: { formatter: value => `${value}万円` } }
+  });
+  charts.unitPriceMini.render();
+}
+
+function renderLossReasonList() {
+  const container = document.getElementById('lossReasonList');
+  if (!container) return;
+
+  const max = Math.max(...dashboardData.lossReasons.values);
+  container.innerHTML = dashboardData.lossReasons.categories.map((category, index) => {
+    const value = dashboardData.lossReasons.values[index];
+    const pct = max > 0 ? (value / max) * 100 : 0;
+    return `
+      <div>
+        <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+          <span>${category}</span>
+          <strong class="text-white">${value}件</strong>
+        </div>
+        <div class="h-2 bg-slate-800/70 rounded-full overflow-hidden">
+          <div class="h-full rounded-full bg-gradient-to-r from-rose-500 to-brand-amber" style="width: ${pct}%"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderMarketOverview() {
+  const heatmapEl = document.getElementById('marketHeatmapMiniChart');
+  if (!heatmapEl) return;
+
+  renderMarketHeatmapMini();
+  renderMarketSummaryList();
+  renderContractShareList();
+}
+
+function renderMarketHeatmapMini() {
+  const el = document.getElementById('marketHeatmapMiniChart');
+  if (!el) return;
+
+  if (charts.marketHeatmapMini) {
+    charts.marketHeatmapMini.destroy();
+  }
+
+  charts.marketHeatmapMini = new ApexCharts(el, {
+    series: dashboardData.marketHeatmap,
+    chart: { height: 380, type: 'heatmap', background: 'transparent', toolbar: { show: false }, foreColor: '#94a3b8' },
+    plotOptions: {
+      heatmap: {
+        radius: 4,
+        colorScale: {
+          ranges: [
+            { from: 0.0, to: 0.9, name: '買い手', color: '#2563eb' },
+            { from: 0.91, to: 1.8, name: '均衡', color: '#06b6d4' },
+            { from: 1.81, to: 2.8, name: '売り手', color: '#f59e0b' },
+            { from: 2.81, to: 5.0, name: '超売り手', color: '#ef4444' }
+          ]
+        }
+      }
+    },
+    dataLabels: { enabled: true, style: { colors: ['#fff'], fontSize: '10px' } },
+    stroke: { width: 2, colors: ['#0a0f1d'] },
+    grid: { padding: { right: 16 } },
+    tooltip: { theme: 'dark', y: { formatter: value => `${value.toFixed(1)}倍` } }
+  });
+  charts.marketHeatmapMini.render();
+}
+
+function renderMarketSummaryList() {
+  const container = document.getElementById('marketSummaryList');
+  if (!container) return;
+
+  const rows = dashboardData.marketHeatmap
+    .flatMap(area => area.data.map(item => ({ area: area.name, category: item.x, ratio: item.y })))
+    .sort((a, b) => b.ratio - a.ratio)
+    .slice(0, 6);
+
+  container.innerHTML = rows.map(row => {
+    const tone = row.ratio >= 2.8 ? 'text-rose-400 bg-rose-500/10 border-rose-500/20' : row.ratio >= 1.8 ? 'text-brand-amber bg-brand-amber/10 border-brand-amber/20' : 'text-brand-cyan bg-brand-cyan/10 border-brand-cyan/20';
+    return `
+      <div class="p-3 rounded-2xl bg-slate-950/30 border border-slate-800/70 flex items-center justify-between gap-3">
+        <div>
+          <h4 class="text-xs font-bold text-white">${row.area}</h4>
+          <p class="text-[9px] text-slate-500">${row.category}</p>
+        </div>
+        <span class="px-2 py-0.5 rounded-full border ${tone} text-[10px] font-bold">${row.ratio.toFixed(1)}倍</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderContractShareList() {
+  const container = document.getElementById('contractShareList');
+  if (!container) return;
+
+  const total = dashboardData.contractTypes.values.reduce((sum, value) => sum + value, 0);
+  container.innerHTML = dashboardData.contractTypes.labels.map((label, index) => {
+    const value = dashboardData.contractTypes.values[index];
+    const pct = total > 0 ? (value / total) * 100 : 0;
+    return `
+      <div>
+        <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+          <span>${label}</span>
+          <strong class="text-white">${pct.toFixed(1)}%</strong>
+        </div>
+        <div class="h-2 bg-slate-800/70 rounded-full overflow-hidden">
+          <div class="h-full rounded-full bg-gradient-to-r from-brand-purple to-brand-cyan" style="width: ${pct}%"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 function renderTeamComparison() {
@@ -467,7 +1444,12 @@ function renderTeamComparison() {
     }
   };
 
-  container.innerHTML = Object.entries(dashboardData.teamsData).map(([teamId, team]) => {
+  const sortedTeams = Object.entries(dashboardData.teamsData).sort(([, teamA], [, teamB]) => {
+    const priority = { danger: 0, warning: 1, good: 2 };
+    return (priority[teamA.status] ?? 2) - (priority[teamB.status] ?? 2);
+  });
+
+  container.innerHTML = sortedTeams.map(([teamId, team]) => {
     const cfg = statusConfig[team.status] || statusConfig.good;
     const conversion = team.funnel.interviews.actual > 0
       ? ((team.funnel.placements.actual / team.funnel.interviews.actual) * 100).toFixed(1)
@@ -568,7 +1550,10 @@ function renderFunnel() {
   const bottleneckContainer = document.getElementById('funnelBottleneckContainer');
   if (!container || !bottleneckContainer || !dashboardData.teamsData) return;
 
-  const team = dashboardData.teamsData[state.selectedTeam];
+  const team = state.selectedTeam === 'all'
+    ? { name: '全体', funnel: aggregateFunnelData() }
+    : dashboardData.teamsData[state.selectedTeam];
+  if (!team) return;
   const fData = team.funnel;
 
   const stages = [
@@ -1101,6 +2086,9 @@ window.closeRiskPopover = function() {
 // -------------------------------------------------------------
 
 function initCharts() {
+  // 現在の画面はファネル分析に絞り込んでいるため、旧チャート群は初期化しない。
+  return;
+
   // 4-1. 売上トレンドグラフ
   const revenueTrendOptions = {
     series: [
@@ -1863,6 +2851,21 @@ window.selectTeamAndScroll = function(teamId) {
     switchTab('funnel');
     
     // 最上部へスマートにスクロール
+    const scrollArea = document.getElementById('mainScrollArea') || document.querySelector('main');
+    scrollArea.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  }
+};
+
+window.selectMemberAndScroll = function(memberId) {
+  const selector = document.getElementById('memberSelector');
+  if (selector) {
+    selector.value = memberId;
+    selector.dispatchEvent(new Event('change'));
+    switchTab('correlation');
+
     const scrollArea = document.getElementById('mainScrollArea') || document.querySelector('main');
     scrollArea.scrollTo({
       top: 0,
