@@ -1,5 +1,5 @@
 /**
- * M3キャリア 薬剤師人材紹介ダッシュボード
+ * 薬剤師人材紹介ダッシュボード
  * アプリケーションメインロジック (Ver. 2.0 - 拡張版)
  * 
  * ⚠️ DEVELOPER NOTICE:
@@ -2711,4 +2711,3 @@ window.resetAreaDefinitionsToDefault = function() {
     alert('初期設定に復元しました。');
   }
 };
-
