@@ -91,10 +91,6 @@
               <button onclick="setFunnelLayer('team')" id="layer-btn-team" class="funnel-layer-btn px-4 py-2 rounded-lg text-white bg-slate-800">チーム</button>
               <button onclick="setFunnelLayer('member')" id="layer-btn-member" class="funnel-layer-btn px-4 py-2 rounded-lg text-slate-400 hover:text-white">メンバー</button>
             </div>
-            <div class="flex bg-slate-950/40 p-1 rounded-xl border border-slate-800/80 text-[10px] font-bold">
-              <button onclick="setAllProcessActions(true)" class="px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition">行動を全て開く</button>
-              <button onclick="setAllProcessActions(false)" class="px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition">閉じる</button>
-            </div>
           </div>
         </div>
 
@@ -135,12 +131,12 @@
               </div>
               <div class="flex flex-col items-start lg:items-end gap-2">
                 <div class="flex bg-slate-950/50 p-1 rounded-xl border border-slate-800/80 text-[10px] font-bold">
-                  <button onclick="setFunnelComparisonMode('team')" id="comparison-mode-team" class="comparison-mode-btn px-3 py-1.5 rounded-lg text-white bg-slate-800">チーム</button>
-                  <button onclick="setFunnelComparisonMode('region')" id="comparison-mode-region" class="comparison-mode-btn px-3 py-1.5 rounded-lg text-slate-400 hover:text-white">地域</button>
-                  <button onclick="setFunnelComparisonMode('age')" id="comparison-mode-age" class="comparison-mode-btn px-3 py-1.5 rounded-lg text-slate-400 hover:text-white">年齢</button>
-                  <button onclick="setFunnelComparisonMode('member')" id="comparison-mode-member" class="comparison-mode-btn px-3 py-1.5 rounded-lg text-slate-400 hover:text-white">個人</button>
+                  <button data-comparison-mode="team" id="comparison-mode-team" class="comparison-mode-btn px-3 py-1.5 rounded-lg text-white bg-slate-800">チーム</button>
+                  <button data-comparison-mode="region" id="comparison-mode-region" class="comparison-mode-btn px-3 py-1.5 rounded-lg text-slate-400 hover:text-white">地域</button>
+                  <button data-comparison-mode="age" id="comparison-mode-age" class="comparison-mode-btn px-3 py-1.5 rounded-lg text-slate-400 hover:text-white">年齢</button>
+                  <button data-comparison-mode="member" id="comparison-mode-member" class="comparison-mode-btn px-3 py-1.5 rounded-lg text-slate-400 hover:text-white">個人</button>
                 </div>
-                <button onclick="showAllTeamsInComparison()" class="px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700/70 text-[10px] font-bold text-slate-300 hover:text-white hover:border-brand-blue/35 transition">
+                <button data-comparison-show-all="true" class="px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700/70 text-[10px] font-bold text-slate-300 hover:text-white hover:border-brand-blue/35 transition">
                   全項目表示
                 </button>
                 <div id="teamComparisonVisibilityControls" class="flex flex-wrap justify-start lg:justify-end gap-1.5 max-w-xl"></div>
@@ -272,6 +268,6 @@
 
   <script src="jpmap.min.js?v=2.5.1"></script>
   <script src="data.js?v=2.5.1"></script>
-  <script src="app.js?v=2.5.1"></script>
+  <script src="app.js?v=2.5.13"></script>
 </body>
 </html>
