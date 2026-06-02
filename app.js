@@ -12,6 +12,8 @@ const state = {
   selectedTeam: 'group1',
   selectedMember: 'suzuki',
   hiddenComparisonTeams: [],
+  hiddenComparisonItemsByMode: {},
+  funnelComparisonMode: 'team',
   leaderboardMetric: 'calls',
   selectedFunnelLayer: 'team',
   // 市場調査用サブタブと選択エリア
@@ -798,29 +800,129 @@ function getMetricStatusClass(percent) {
   return 'text-rose-400';
 }
 
+function cloneFunnelData(funnel) {
+  return Object.fromEntries(FUNNEL_STAGES.map(stage => ([
+    stage.key,
+    {
+      actual: funnel[stage.key]?.actual || 0,
+      target: funnel[stage.key]?.target || 0
+    }
+  ])));
+}
+
+function scaleFunnelData(baseFunnel, factor) {
+  return Object.fromEntries(FUNNEL_STAGES.map(stage => ([
+    stage.key,
+    {
+      actual: Math.max(0, Math.round((baseFunnel[stage.key]?.actual || 0) * factor)),
+      target: Math.max(1, Math.round((baseFunnel[stage.key]?.target || 0) * factor))
+    }
+  ])));
+}
+
+function sumFunnelItems(items) {
+  const totals = {};
+  FUNNEL_STAGES.forEach(stage => {
+    totals[stage.key] = { actual: 0, target: 0 };
+  });
+
+  items.forEach(item => {
+    FUNNEL_STAGES.forEach(stage => {
+      totals[stage.key].actual += item.funnel[stage.key]?.actual || 0;
+      totals[stage.key].target += item.funnel[stage.key]?.target || 0;
+    });
+  });
+
+  return totals;
+}
+
+function getFunnelComparisonItems(mode = state.funnelComparisonMode) {
+  if (mode === 'member') {
+    return dashboardData.members.map(member => ({
+      id: member.id,
+      name: member.name,
+      caption: member.role,
+      funnel: memberToFunnelData(member)
+    }));
+  }
+
+  if (mode === 'region') {
+    const teams = dashboardData.teamsData;
+    return [
+      {
+        id: 'tokyo',
+        name: '東京',
+        caption: '第1G・第2G・第3G',
+        funnel: sumFunnelItems(['group1', 'group2', 'group3'].map(id => ({ funnel: teams[id].funnel })))
+      },
+      { id: 'kanagawa', name: '神奈川', caption: '神奈川CA', funnel: cloneFunnelData(teams.kanagawa.funnel) },
+      { id: 'saitama', name: '埼玉', caption: '埼玉CA', funnel: cloneFunnelData(teams.saitama.funnel) },
+      { id: 'chiba', name: '千葉', caption: '千葉CA', funnel: cloneFunnelData(teams.chiba.funnel) },
+      { id: 'kansai', name: '関西', caption: '関西CA', funnel: cloneFunnelData(teams.osaka.funnel) },
+      { id: 'tokai', name: '東海', caption: '東海CA', funnel: cloneFunnelData(teams.nagoya.funnel) }
+    ];
+  }
+
+  if (mode === 'age') {
+    const aggregate = aggregateFunnelData();
+    return [
+      { id: '20s', name: '20代', caption: '若手層', funnel: scaleFunnelData(aggregate, 0.24) },
+      { id: '30s', name: '30代', caption: '主力層', funnel: scaleFunnelData(aggregate, 0.34) },
+      { id: '40s', name: '40代', caption: '経験者層', funnel: scaleFunnelData(aggregate, 0.25) },
+      { id: '50s', name: '50代以上', caption: 'ベテラン層', funnel: scaleFunnelData(aggregate, 0.17) }
+    ];
+  }
+
+  return Object.entries(dashboardData.teamsData).map(([id, team]) => ({
+    id,
+    name: team.name,
+    caption: team.leader,
+    funnel: cloneFunnelData(team.funnel)
+  }));
+}
+
+function getFunnelComparisonModeLabel(mode = state.funnelComparisonMode) {
+  return {
+    team: 'チーム',
+    region: '地域',
+    age: '年齢',
+    member: '個人'
+  }[mode] || 'チーム';
+}
+
 function renderTeamFunnelComparisonMatrix() {
   const matrix = document.getElementById('teamFunnelComparisonMatrix');
   const controls = document.getElementById('teamComparisonVisibilityControls');
   if (!matrix || !controls || !dashboardData.teamsData) return;
 
-  const teamEntries = Object.entries(dashboardData.teamsData);
-  const hiddenIds = new Set(state.hiddenComparisonTeams);
-  const visibleTeams = teamEntries.filter(([teamId]) => !hiddenIds.has(teamId));
+  const mode = state.funnelComparisonMode || 'team';
+  const items = getFunnelComparisonItems(mode);
+  const hiddenIds = new Set(state.hiddenComparisonItemsByMode[mode] || []);
+  const visibleItems = items.filter(item => !hiddenIds.has(item.id));
 
-  controls.innerHTML = teamEntries.map(([teamId, team]) => {
-    const isHidden = hiddenIds.has(teamId);
+  ['team', 'region', 'age', 'member'].forEach(modeId => {
+    const btn = document.getElementById(`comparison-mode-${modeId}`);
+    if (btn) {
+      btn.className = modeId === mode
+        ? 'comparison-mode-btn px-3 py-1.5 rounded-lg text-white bg-slate-800'
+        : 'comparison-mode-btn px-3 py-1.5 rounded-lg text-slate-400 hover:text-white';
+    }
+  });
+
+  controls.innerHTML = items.map(item => {
+    const isHidden = hiddenIds.has(item.id);
     return `
-      <button onclick="toggleTeamComparisonVisibility('${teamId}')" class="px-2.5 py-1 rounded-full border text-[9px] font-bold transition ${isHidden ? 'bg-slate-950/40 border-slate-800/80 text-slate-500 line-through hover:text-slate-300' : 'bg-slate-800/70 border-slate-700/70 text-slate-300 hover:border-brand-blue/35 hover:text-white'}">
-        ${team.name.replace('東京CA ', '').replace('グループ', 'G')}
+      <button onclick="toggleTeamComparisonVisibility('${item.id}')" class="px-2.5 py-1 rounded-full border text-[9px] font-bold transition ${isHidden ? 'bg-slate-950/40 border-slate-800/80 text-slate-500 line-through hover:text-slate-300' : 'bg-slate-800/70 border-slate-700/70 text-slate-300 hover:border-brand-blue/35 hover:text-white'}">
+        ${item.name.replace('東京CA ', '').replace('グループ', 'G')}
       </button>
     `;
   }).join('');
 
-  if (visibleTeams.length === 0) {
+  if (visibleItems.length === 0) {
     matrix.innerHTML = `
       <div class="min-h-40 rounded-xl border border-slate-800/70 bg-slate-950/30 flex flex-col items-center justify-center gap-3 text-center">
-        <p class="text-xs font-bold text-slate-300">表示中のチームがありません</p>
-        <button onclick="showAllTeamsInComparison()" class="px-3 py-1.5 rounded-lg bg-brand-blue/15 border border-brand-blue/30 text-[10px] font-bold text-brand-cyan hover:text-white transition">全チームを戻す</button>
+        <p class="text-xs font-bold text-slate-300">表示中の${getFunnelComparisonModeLabel(mode)}がありません</p>
+        <button onclick="showAllTeamsInComparison()" class="px-3 py-1.5 rounded-lg bg-brand-blue/15 border border-brand-blue/30 text-[10px] font-bold text-brand-cyan hover:text-white transition">全項目を戻す</button>
       </div>
     `;
     lucide.createIcons();
@@ -828,25 +930,28 @@ function renderTeamFunnelComparisonMatrix() {
   }
 
   const columnWidth = 238;
-  const overallFunnel = aggregateFunnelData();
+  const overallFunnel = sumFunnelItems(items);
   const stickyLabelClass = 'sticky left-0 z-50 bg-[#020617] border-r border-slate-800/80';
   const stickyOverallClass = 'sticky z-40 bg-[#020617] border-r border-slate-800/80';
   const overallHeaderCell = `
     <div class="${stickyOverallClass} team-funnel-compare-col border-l border-slate-800/70 p-3" style="left: 156px;">
       <h5 class="text-xs font-bold text-white truncate">全体</h5>
-      <p class="text-[9px] text-slate-500 truncate mt-0.5">全チーム合算</p>
+      <p class="text-[9px] text-slate-500 truncate mt-0.5">${getFunnelComparisonModeLabel(mode)}合算</p>
     </div>
   `;
 
-  const headerCells = visibleTeams.map(([teamId, team]) => {
+  const headerCells = visibleItems.map(item => {
+    const titleAttrs = mode === 'member'
+      ? `onclick="selectMemberAndScroll('${item.id}')"`
+      : '';
     return `
       <div class="team-funnel-compare-col border-l border-slate-800/70 bg-slate-950/20 p-3">
         <div class="flex items-start justify-between gap-2">
-          <button onclick="selectTeamAndScroll('${teamId}')" class="min-w-0 text-left group">
-            <h5 class="text-xs font-bold text-white truncate group-hover:text-brand-cyan transition">${team.name}</h5>
-            <p class="text-[9px] text-slate-500 truncate mt-0.5">${team.leader}</p>
+          <button ${titleAttrs} class="min-w-0 text-left group ${mode === 'member' ? '' : 'cursor-default'}">
+            <h5 class="text-xs font-bold text-white truncate ${mode === 'member' ? 'group-hover:text-brand-cyan transition' : ''}">${item.name}</h5>
+            <p class="text-[9px] text-slate-500 truncate mt-0.5">${item.caption || ''}</p>
           </button>
-          <button onclick="toggleTeamComparisonVisibility('${teamId}')" class="p-1 rounded-md text-slate-500 hover:text-white hover:bg-slate-800/70 transition" title="このチームを非表示">
+          <button onclick="toggleTeamComparisonVisibility('${item.id}')" class="p-1 rounded-md text-slate-500 hover:text-white hover:bg-slate-800/70 transition" title="この項目を非表示">
             <i data-lucide="eye-off" class="w-3.5 h-3.5"></i>
           </button>
         </div>
@@ -863,7 +968,7 @@ function renderTeamFunnelComparisonMatrix() {
         <div class="min-w-0 flex-1">
           <p class="text-[11px] font-extrabold text-white">${index + 1}. ${stage.fullName}</p>
           <p class="text-[8.5px] text-slate-500">実績 / 目標</p>
-          <p class="text-[8px] text-brand-cyan/80 mt-1 opacity-0 group-hover:opacity-100 transition">全チーム分を開閉</p>
+          <p class="text-[8px] text-brand-cyan/80 mt-1 opacity-0 group-hover:opacity-100 transition">全項目分を開閉</p>
         </div>
         <i data-lucide="chevron-down" class="comparison-stage-chevron w-3.5 h-3.5 text-slate-500 transition-transform group-hover:text-brand-cyan" data-stage-key="${stage.key}"></i>
       </button>
@@ -894,16 +999,16 @@ function renderTeamFunnelComparisonMatrix() {
       </div>
     `;
 
-    const cells = visibleTeams.map(([teamId, team]) => {
-      const fData = team.funnel;
+    const cells = visibleItems.map(item => {
+      const fData = item.funnel;
       const metric = fData[stage.key];
       const classes = FUNNEL_STAGE_CLASSES[stage.accent];
       const regActual = fData.registrations.actual || 1;
       const regTarget = fData.registrations.target || 1;
       const overallActualRate = regActual > 0 ? (metric.actual / regActual) * 100 : 0;
       const overallTargetRate = regTarget > 0 ? (metric.target / regTarget) * 100 : 0;
-      const panelId = `team-compare-${teamId}-${stage.key}-actions`;
-      const actionItems = getProcessActionChecks(stage.key, fData, 'team');
+      const panelId = `team-compare-${mode}-${item.id}-${stage.key}-actions`;
+      const actionItems = getProcessActionChecks(stage.key, fData, mode === 'member' ? 'member' : 'team');
 
       return `
         <div class="border-l border-t border-slate-800/60 p-2.5 bg-slate-950/20">
@@ -995,8 +1100,8 @@ function renderTeamFunnelComparisonMatrix() {
           </div>
         `;
       })()}
-      ${visibleTeams.map(([, team]) => {
-        const fData = team.funnel;
+      ${visibleItems.map(item => {
+        const fData = item.funnel;
         const metric = fData[stage.key];
         const prevStage = FUNNEL_STAGES[index - 1];
         const prevMetric = fData[prevStage.key];
@@ -1039,7 +1144,7 @@ function renderTeamFunnelComparisonMatrix() {
   }).join('');
 
   matrix.innerHTML = `
-    <div class="inline-grid min-w-full rounded-xl border border-slate-800/80 bg-slate-900/30" style="grid-template-columns: 156px ${columnWidth}px repeat(${visibleTeams.length}, ${columnWidth}px);">
+    <div class="inline-grid min-w-full rounded-xl border border-slate-800/80 bg-slate-900/30" style="grid-template-columns: 156px ${columnWidth}px repeat(${visibleItems.length}, ${columnWidth}px);">
       <div class="${stickyLabelClass} p-3">
         <p class="text-xs font-bold text-slate-200">比較指標</p>
         <p class="text-[8.5px] text-slate-500 mt-1">工程名は左固定</p>
@@ -1053,19 +1158,32 @@ function renderTeamFunnelComparisonMatrix() {
   lucide.createIcons();
 }
 
-window.toggleTeamComparisonVisibility = function(teamId) {
-  const hidden = new Set(state.hiddenComparisonTeams);
-  if (hidden.has(teamId)) {
-    hidden.delete(teamId);
+window.toggleTeamComparisonVisibility = function(itemId) {
+  const mode = state.funnelComparisonMode || 'team';
+  const hidden = new Set(state.hiddenComparisonItemsByMode[mode] || []);
+  if (hidden.has(itemId)) {
+    hidden.delete(itemId);
   } else {
-    hidden.add(teamId);
+    hidden.add(itemId);
   }
-  state.hiddenComparisonTeams = [...hidden];
+  state.hiddenComparisonItemsByMode[mode] = [...hidden];
+  if (mode === 'team') {
+    state.hiddenComparisonTeams = [...hidden];
+  }
   renderTeamFunnelComparisonMatrix();
 };
 
 window.showAllTeamsInComparison = function() {
-  state.hiddenComparisonTeams = [];
+  const mode = state.funnelComparisonMode || 'team';
+  state.hiddenComparisonItemsByMode[mode] = [];
+  if (mode === 'team') {
+    state.hiddenComparisonTeams = [];
+  }
+  renderTeamFunnelComparisonMatrix();
+};
+
+window.setFunnelComparisonMode = function(mode) {
+  state.funnelComparisonMode = mode;
   renderTeamFunnelComparisonMatrix();
 };
 
