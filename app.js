@@ -11,8 +11,9 @@ const state = {
   selectedPeriod: 'this-month',
   selectedTeam: 'group1',
   selectedMember: 'suzuki',
+  hiddenComparisonTeams: [],
   leaderboardMetric: 'calls',
-  selectedFunnelLayer: 'overall',
+  selectedFunnelLayer: 'team',
   // 市場調査用サブタブと選択エリア
   currentMarketSubTab: 'pref',
   selectedAreaId: 'kanto',
@@ -760,10 +761,313 @@ function renderLayerFunnels() {
 
   renderFunnelSummaryList('memberFunnelSummaryGrid', memberItems);
   renderFunnelSummaryList('allMemberFunnelSummaryGrid', memberItems);
+  renderTeamFunnelComparisonMatrix();
 
   updatePageContext();
   lucide.createIcons();
 }
+
+function getTeamStatusConfig(status) {
+  const statusConfig = {
+    good: {
+      label: '良好',
+      badge: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
+      bar: 'bg-gradient-to-r from-brand-blue to-brand-cyan',
+      mutedBar: 'bg-emerald-500'
+    },
+    warning: {
+      label: '注意',
+      badge: 'bg-amber-500/10 border-amber-500/20 text-brand-amber',
+      bar: 'bg-brand-amber',
+      mutedBar: 'bg-brand-amber'
+    },
+    danger: {
+      label: '警告',
+      badge: 'bg-rose-500/10 border-rose-500/20 text-rose-400',
+      bar: 'bg-rose-500',
+      mutedBar: 'bg-rose-500'
+    }
+  };
+
+  return statusConfig[status] || statusConfig.good;
+}
+
+function getMetricStatusClass(percent) {
+  if (percent >= 100) return 'text-emerald-400';
+  if (percent >= 80) return 'text-brand-amber';
+  return 'text-rose-400';
+}
+
+function renderTeamFunnelComparisonMatrix() {
+  const matrix = document.getElementById('teamFunnelComparisonMatrix');
+  const controls = document.getElementById('teamComparisonVisibilityControls');
+  if (!matrix || !controls || !dashboardData.teamsData) return;
+
+  const teamEntries = Object.entries(dashboardData.teamsData);
+  const hiddenIds = new Set(state.hiddenComparisonTeams);
+  const visibleTeams = teamEntries.filter(([teamId]) => !hiddenIds.has(teamId));
+
+  controls.innerHTML = teamEntries.map(([teamId, team]) => {
+    const isHidden = hiddenIds.has(teamId);
+    return `
+      <button onclick="toggleTeamComparisonVisibility('${teamId}')" class="px-2.5 py-1 rounded-full border text-[9px] font-bold transition ${isHidden ? 'bg-slate-950/40 border-slate-800/80 text-slate-500 line-through hover:text-slate-300' : 'bg-slate-800/70 border-slate-700/70 text-slate-300 hover:border-brand-blue/35 hover:text-white'}">
+        ${team.name.replace('東京CA ', '').replace('グループ', 'G')}
+      </button>
+    `;
+  }).join('');
+
+  if (visibleTeams.length === 0) {
+    matrix.innerHTML = `
+      <div class="min-h-40 rounded-xl border border-slate-800/70 bg-slate-950/30 flex flex-col items-center justify-center gap-3 text-center">
+        <p class="text-xs font-bold text-slate-300">表示中のチームがありません</p>
+        <button onclick="showAllTeamsInComparison()" class="px-3 py-1.5 rounded-lg bg-brand-blue/15 border border-brand-blue/30 text-[10px] font-bold text-brand-cyan hover:text-white transition">全チームを戻す</button>
+      </div>
+    `;
+    lucide.createIcons();
+    return;
+  }
+
+  const columnWidth = 238;
+  const overallFunnel = aggregateFunnelData();
+  const stickyLabelClass = 'sticky left-0 z-50 bg-[#020617] border-r border-slate-800/80';
+  const stickyOverallClass = 'sticky z-40 bg-[#020617] border-r border-slate-800/80';
+  const overallHeaderCell = `
+    <div class="${stickyOverallClass} team-funnel-compare-col border-l border-slate-800/70 p-3" style="left: 156px;">
+      <h5 class="text-xs font-bold text-white truncate">全体</h5>
+      <p class="text-[9px] text-slate-500 truncate mt-0.5">全チーム合算</p>
+    </div>
+  `;
+
+  const headerCells = visibleTeams.map(([teamId, team]) => {
+    return `
+      <div class="team-funnel-compare-col border-l border-slate-800/70 bg-slate-950/20 p-3">
+        <div class="flex items-start justify-between gap-2">
+          <button onclick="selectTeamAndScroll('${teamId}')" class="min-w-0 text-left group">
+            <h5 class="text-xs font-bold text-white truncate group-hover:text-brand-cyan transition">${team.name}</h5>
+            <p class="text-[9px] text-slate-500 truncate mt-0.5">${team.leader}</p>
+          </button>
+          <button onclick="toggleTeamComparisonVisibility('${teamId}')" class="p-1 rounded-md text-slate-500 hover:text-white hover:bg-slate-800/70 transition" title="このチームを非表示">
+            <i data-lucide="eye-off" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const stageRows = FUNNEL_STAGES.map((stage, index) => {
+    const labelCell = `
+      <button onclick="toggleComparisonStageActions('${stage.key}', this)" class="${stickyLabelClass} p-3 flex items-center gap-2 text-left group hover:bg-slate-900/80 transition">
+        <span class="w-7 h-7 rounded-lg border ${FUNNEL_STAGE_CLASSES[stage.accent].icon} flex items-center justify-center flex-shrink-0">
+          <i data-lucide="${stage.icon}" class="w-3.5 h-3.5"></i>
+        </span>
+        <div class="min-w-0 flex-1">
+          <p class="text-[11px] font-extrabold text-white">${index + 1}. ${stage.fullName}</p>
+          <p class="text-[8.5px] text-slate-500">実績 / 目標</p>
+          <p class="text-[8px] text-brand-cyan/80 mt-1 opacity-0 group-hover:opacity-100 transition">全チーム分を開閉</p>
+        </div>
+        <i data-lucide="chevron-down" class="comparison-stage-chevron w-3.5 h-3.5 text-slate-500 transition-transform group-hover:text-brand-cyan" data-stage-key="${stage.key}"></i>
+      </button>
+    `;
+
+    const overallMetric = overallFunnel[stage.key];
+    const overallClasses = FUNNEL_STAGE_CLASSES[stage.accent];
+    const overallRegActual = overallFunnel.registrations.actual || 1;
+    const overallRegTarget = overallFunnel.registrations.target || 1;
+    const overallActualRate = overallRegActual > 0 ? (overallMetric.actual / overallRegActual) * 100 : 0;
+    const overallTargetRate = overallRegTarget > 0 ? (overallMetric.target / overallRegTarget) * 100 : 0;
+    const overallStageCell = `
+      <div class="${stickyOverallClass} border-l border-t border-slate-800/60 p-2.5" style="left: 156px;">
+        <div class="w-full text-left">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] text-slate-300 font-semibold">
+              実績 <strong class="text-sm text-white font-extrabold">${overallMetric.actual.toLocaleString()}</strong>
+              <span class="text-slate-600 mx-0.5">/</span>
+              目標 <strong class="text-sm text-slate-200 font-extrabold">${overallMetric.target.toLocaleString()}</strong>
+            </span>
+          </div>
+          <div class="mt-1.5 w-full bg-slate-800/60 rounded-lg h-7 relative flex items-center overflow-hidden border border-slate-800">
+            <div class="bg-gradient-to-r ${overallClasses.bar} h-full rounded-l-lg opacity-85" style="width: ${Math.min(overallActualRate, 100)}%"></div>
+            <span class="absolute left-2.5 text-[11px] font-bold text-white drop-shadow">${overallActualRate.toFixed(1)}%</span>
+            <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(overallTargetRate, 100)}%" title="目標全体比: ${overallTargetRate.toFixed(1)}%"></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const cells = visibleTeams.map(([teamId, team]) => {
+      const fData = team.funnel;
+      const metric = fData[stage.key];
+      const classes = FUNNEL_STAGE_CLASSES[stage.accent];
+      const regActual = fData.registrations.actual || 1;
+      const regTarget = fData.registrations.target || 1;
+      const overallActualRate = regActual > 0 ? (metric.actual / regActual) * 100 : 0;
+      const overallTargetRate = regTarget > 0 ? (metric.target / regTarget) * 100 : 0;
+      const panelId = `team-compare-${teamId}-${stage.key}-actions`;
+      const actionItems = getProcessActionChecks(stage.key, fData, 'team');
+
+      return `
+        <div class="border-l border-t border-slate-800/60 p-2.5 bg-slate-950/20">
+          <div class="w-full text-left">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[11px] text-slate-300 font-semibold">
+                実績 <strong class="text-sm text-white font-extrabold">${metric.actual.toLocaleString()}</strong>
+                <span class="text-slate-600 mx-0.5">/</span>
+                目標 <strong class="text-sm text-slate-200 font-extrabold">${metric.target.toLocaleString()}</strong>
+              </span>
+            </div>
+            <div class="mt-1.5 w-full bg-slate-800/60 rounded-lg h-7 relative flex items-center overflow-hidden border border-slate-800">
+              <div class="bg-gradient-to-r ${classes.bar} h-full rounded-l-lg opacity-85" style="width: ${Math.min(overallActualRate, 100)}%"></div>
+              <span class="absolute left-2.5 text-[11px] font-bold text-white drop-shadow">${overallActualRate.toFixed(1)}%</span>
+              <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(overallTargetRate, 100)}%" title="目標全体比: ${overallTargetRate.toFixed(1)}%"></div>
+            </div>
+          </div>
+          <div id="${panelId}" class="process-action-panel hidden overflow-hidden">
+            <div class="mt-2 p-2 rounded-xl bg-slate-950/45 border border-slate-800/70 space-y-2">
+              ${actionItems.map(item => {
+                const itemClass = item.rate >= 100
+                  ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20'
+                  : item.rate >= 80
+                    ? 'text-brand-amber bg-brand-amber/10 border-brand-amber/20'
+                    : 'text-rose-300 bg-rose-500/10 border-rose-500/20';
+                const barClass = item.rate >= 100
+                  ? 'bg-emerald-400'
+                  : item.rate >= 80
+                    ? 'bg-brand-amber'
+                    : 'bg-rose-400';
+                return `
+                  <div class="rounded-lg bg-slate-900/50 border border-slate-800/70 p-2">
+                    <div class="flex items-center justify-between gap-2 mb-1.5">
+                      <h6 class="text-[9.5px] font-bold text-white">${item.label}</h6>
+                      <span class="px-1.5 py-0.5 rounded border ${itemClass} text-[8px] font-bold">${item.rate.toFixed(0)}%</span>
+                    </div>
+                    <div class="h-1.5 bg-slate-800/80 rounded-full overflow-hidden">
+                      <div class="h-full rounded-full ${barClass}" style="width: ${Math.min(item.rate, 100)}%"></div>
+                    </div>
+                    <div class="mt-1 flex justify-between text-[8px] text-slate-500">
+                      <span>${item.actual.toLocaleString()}${item.unit}</span>
+                      <span>${item.target.toLocaleString()}${item.unit}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const transitionRow = index === 0 ? '' : `
+      <div class="${stickyLabelClass} border-t border-slate-800/70 bg-slate-950/95"></div>
+      ${(() => {
+        const metric = overallFunnel[stage.key];
+        const prevStage = FUNNEL_STAGES[index - 1];
+        const prevMetric = overallFunnel[prevStage.key];
+        const transitionRate = prevMetric.actual > 0 ? (metric.actual / prevMetric.actual) * 100 : 0;
+        const targetTransitionRate = prevMetric.target > 0 ? (metric.target / prevMetric.target) * 100 : 0;
+        const transitionGap = transitionRate - targetTransitionRate;
+        const isWeakTransition = transitionGap < 0;
+        const transitionBarClass = transitionGap >= 0
+          ? 'bg-emerald-400'
+          : transitionGap >= -3
+            ? 'bg-slate-300/80'
+            : 'bg-rose-400';
+        return `
+          <div class="${stickyOverallClass} border-l border-t border-slate-800/60 px-2.5 py-1.5 ${isWeakTransition ? 'bg-rose-950' : ''}" style="left: 156px;">
+            <div class="flex items-center gap-2 text-[9px] text-slate-500">
+              <span class="w-5 h-5 rounded-lg bg-slate-900/80 border border-slate-800/80 flex items-center justify-center flex-shrink-0">
+                <i data-lucide="arrow-down" class="w-3 h-3 text-slate-400"></i>
+              </span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2">
+                  <span>前工程比</span>
+                  <span class="whitespace-nowrap">
+                    実績 <strong class="text-slate-200">${transitionRate.toFixed(1)}%</strong>
+                    <span class="text-slate-600 mx-1">/</span>
+                    目標 <strong class="text-slate-300">${targetTransitionRate.toFixed(1)}%</strong>
+                  </span>
+                </div>
+                <div class="mt-1 h-1 bg-slate-800/80 rounded-full overflow-hidden relative">
+                  <div class="h-full rounded-full ${transitionBarClass}" style="width: ${Math.min(transitionRate, 100)}%"></div>
+                  <div class="absolute top-0 bottom-0 border-l border-dashed border-emerald-300/80" style="left: ${Math.min(targetTransitionRate, 100)}%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      })()}
+      ${visibleTeams.map(([, team]) => {
+        const fData = team.funnel;
+        const metric = fData[stage.key];
+        const prevStage = FUNNEL_STAGES[index - 1];
+        const prevMetric = fData[prevStage.key];
+        const transitionRate = prevMetric.actual > 0 ? (metric.actual / prevMetric.actual) * 100 : 0;
+        const targetTransitionRate = prevMetric.target > 0 ? (metric.target / prevMetric.target) * 100 : 0;
+        const transitionGap = transitionRate - targetTransitionRate;
+        const isWeakTransition = transitionGap < 0;
+        const transitionBarClass = transitionGap >= 0
+          ? 'bg-emerald-400'
+          : transitionGap >= -3
+            ? 'bg-slate-300/80'
+            : 'bg-rose-400';
+        return `
+          <div class="border-l border-t border-slate-800/60 px-2.5 py-1.5 ${isWeakTransition ? 'bg-rose-500/10' : 'bg-slate-950/30'}">
+            <div class="flex items-center gap-2 text-[9px] text-slate-500">
+              <span class="w-5 h-5 rounded-lg bg-slate-900/80 border border-slate-800/80 flex items-center justify-center flex-shrink-0">
+                <i data-lucide="arrow-down" class="w-3 h-3 text-slate-400"></i>
+              </span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2">
+                  <span>前工程比</span>
+                  <span class="whitespace-nowrap">
+                    実績 <strong class="text-slate-200">${transitionRate.toFixed(1)}%</strong>
+                    <span class="text-slate-600 mx-1">/</span>
+                    目標 <strong class="text-slate-300">${targetTransitionRate.toFixed(1)}%</strong>
+                  </span>
+                </div>
+                <div class="mt-1 h-1 bg-slate-800/80 rounded-full overflow-hidden relative">
+                  <div class="h-full rounded-full ${transitionBarClass}" style="width: ${Math.min(transitionRate, 100)}%"></div>
+                  <div class="absolute top-0 bottom-0 border-l border-dashed border-emerald-300/80" style="left: ${Math.min(targetTransitionRate, 100)}%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    `;
+
+    return `${transitionRow}${labelCell}${overallStageCell}${cells}`;
+  }).join('');
+
+  matrix.innerHTML = `
+    <div class="inline-grid min-w-full rounded-xl border border-slate-800/80 bg-slate-900/30" style="grid-template-columns: 156px ${columnWidth}px repeat(${visibleTeams.length}, ${columnWidth}px);">
+      <div class="${stickyLabelClass} p-3">
+        <p class="text-xs font-bold text-slate-200">比較指標</p>
+        <p class="text-[8.5px] text-slate-500 mt-1">工程名は左固定</p>
+      </div>
+      ${overallHeaderCell}
+      ${headerCells}
+      ${stageRows}
+    </div>
+  `;
+
+  lucide.createIcons();
+}
+
+window.toggleTeamComparisonVisibility = function(teamId) {
+  const hidden = new Set(state.hiddenComparisonTeams);
+  if (hidden.has(teamId)) {
+    hidden.delete(teamId);
+  } else {
+    hidden.add(teamId);
+  }
+  state.hiddenComparisonTeams = [...hidden];
+  renderTeamFunnelComparisonMatrix();
+};
+
+window.showAllTeamsInComparison = function() {
+  state.hiddenComparisonTeams = [];
+  renderTeamFunnelComparisonMatrix();
+};
 
 function renderFunnelAnalysis(fData, stepsContainerId, bottleneckContainerId, scope = 'overall') {
   const container = document.getElementById(stepsContainerId);
@@ -809,7 +1113,7 @@ function renderFunnelAnalysis(fData, stepsContainerId, bottleneckContainerId, sc
           </div>
         </button>
         <div id="${panelId}" class="process-action-panel hidden overflow-hidden">
-          <div class="mt-2 p-3 rounded-xl bg-slate-950/35 border border-slate-800/70 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="mt-2 p-3 rounded-xl bg-slate-950/35 border border-slate-800/70 grid grid-cols-1 gap-3">
             ${actionItems.map(item => {
               const itemClass = item.rate >= 100
                 ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
@@ -857,7 +1161,7 @@ function renderFunnelAnalysis(fData, stepsContainerId, bottleneckContainerId, sc
           <div class="w-full flex items-center justify-between px-3 py-1.5 rounded-lg bg-slate-900/20 border border-slate-800/40 text-[9.5px]">
             <span class="text-slate-400 font-semibold flex items-center gap-1">
               <i data-lucide="arrow-down" class="w-3.5 h-3.5 text-slate-500"></i>
-              <span>全工程比:</span>
+              <span>前工程比:</span>
             </span>
             <div class="flex items-center gap-2.5">
               <span class="text-slate-300">実績: <strong class="text-white">${prevStepActualRate.toFixed(1)}%</strong></span>
@@ -1134,6 +1438,26 @@ window.toggleProcessActions = function(panelId, trigger) {
   const chevron = trigger?.querySelector('.process-action-chevron');
   if (chevron) {
     chevron.classList.toggle('rotate-180', !panel.classList.contains('hidden'));
+  }
+};
+
+window.toggleComparisonStageActions = function(stageKey, trigger) {
+  const matrix = document.getElementById('teamFunnelComparisonMatrix');
+  if (!matrix) return;
+
+  const panels = [...matrix.querySelectorAll(`.process-action-panel[id$="-${stageKey}-actions"]`)];
+  if (panels.length === 0) return;
+
+  const shouldOpen = panels.some(panel => panel.classList.contains('hidden'));
+  panels.forEach(panel => {
+    panel.classList.toggle('hidden', !shouldOpen);
+    panel.classList.toggle('process-action-panel-open', shouldOpen);
+  });
+
+  const labelChevron = trigger?.querySelector('.comparison-stage-chevron')
+    || matrix.querySelector(`.comparison-stage-chevron[data-stage-key="${stageKey}"]`);
+  if (labelChevron) {
+    labelChevron.classList.toggle('rotate-180', shouldOpen);
   }
 };
 
@@ -2848,7 +3172,8 @@ window.selectTeamAndScroll = function(teamId) {
     selector.value = teamId;
     // changeイベントを発火させて既存のチーム切り替えロジックと連動させる
     selector.dispatchEvent(new Event('change'));
-    switchTab('funnel');
+    switchTab('overview');
+    setFunnelLayer('team');
     
     // 最上部へスマートにスクロール
     const scrollArea = document.getElementById('mainScrollArea') || document.querySelector('main');

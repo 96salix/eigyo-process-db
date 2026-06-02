@@ -84,12 +84,11 @@
         <div class="glass-panel rounded-2xl p-3 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
           <div>
             <h3 class="text-base font-bold text-white">ファネル分析</h3>
-            <p class="text-[10px] text-slate-400 mt-0.5">全体、チーム、メンバーのレイヤーを切り替えて、同じファネル構造で見ます。</p>
+            <p class="text-[10px] text-slate-400 mt-0.5">チーム、メンバーのレイヤーを切り替えて、同じファネル構造で見ます。</p>
           </div>
           <div class="flex flex-wrap gap-2">
             <div class="flex bg-slate-900/60 p-1 rounded-xl border border-slate-800/80 text-xs font-bold">
-              <button onclick="setFunnelLayer('overall')" id="layer-btn-overall" class="funnel-layer-btn px-4 py-2 rounded-lg text-white bg-slate-800">全体</button>
-              <button onclick="setFunnelLayer('team')" id="layer-btn-team" class="funnel-layer-btn px-4 py-2 rounded-lg text-slate-400 hover:text-white">チーム</button>
+              <button onclick="setFunnelLayer('team')" id="layer-btn-team" class="funnel-layer-btn px-4 py-2 rounded-lg text-white bg-slate-800">チーム</button>
               <button onclick="setFunnelLayer('member')" id="layer-btn-member" class="funnel-layer-btn px-4 py-2 rounded-lg text-slate-400 hover:text-white">メンバー</button>
             </div>
             <div class="flex bg-slate-950/40 p-1 rounded-xl border border-slate-800/80 text-[10px] font-bold">
@@ -99,7 +98,7 @@
           </div>
         </div>
 
-        <div id="funnel-layer-overall" class="funnel-layer-content">
+        <div id="funnel-layer-overall" class="funnel-layer-content hidden">
           <section class="grid grid-cols-1 xl:grid-cols-5 gap-6">
           <div class="xl:col-span-3 glass-panel rounded-2xl p-6">
             <div class="flex items-start justify-between gap-4 mb-6">
@@ -128,57 +127,21 @@
         </div>
 
         <div id="funnel-layer-team" class="funnel-layer-content hidden">
-          <div class="glass-panel rounded-2xl p-4 mb-6">
-          <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div>
-              <h3 class="text-base font-bold text-white">チームファネル</h3>
-              <p class="text-[10px] text-slate-400 mt-0.5">選択チームのファネル分析と、配下メンバーのファネル概要です。</p>
-            </div>
-            <div class="relative">
-              <select id="teamSelector" class="w-56 bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-blue cursor-pointer appearance-none">
-                <option value="group1" selected>チームA</option>
-                <option value="group2">チームB</option>
-                <option value="group3">チームC</option>
-                <option value="kanagawa">チームD</option>
-                <option value="saitama">チームE</option>
-                <option value="chiba">チームF</option>
-                <option value="osaka">チームG</option>
-                <option value="nagoya">チームH</option>
-              </select>
-              <div class="absolute right-3 top-2.5 pointer-events-none text-slate-400">
-                <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
-              </div>
-            </div>
-          </div>
-        </div>
-
-          <section class="grid grid-cols-1 xl:grid-cols-5 gap-6">
-          <div class="xl:col-span-3 glass-panel rounded-2xl p-6">
-            <div class="flex justify-between items-center mb-6">
+          <div class="glass-panel rounded-2xl p-5">
+            <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-4">
               <div>
-                <h4 class="text-sm font-bold text-white">チーム別ファネル・ボトルネック分析</h4>
-                <p class="text-[10px] text-slate-400 mt-0.5">選択チームの登録から決定までを、目標歩留まりとの差分で確認します。</p>
+                <h4 class="text-sm font-bold text-white">全チーム横並びファネル比較</h4>
+                <p class="text-[10px] text-slate-400 mt-0.5">全チームのファネル進捗と前工程比を、横スクロールで並べて比較します。</p>
               </div>
-              <div class="text-[10px] text-slate-400">
-                表示対象: <span id="funnel-target-label" class="text-brand-blue font-bold">チームA</span>
+              <div class="flex flex-col items-start lg:items-end gap-2">
+                <button onclick="showAllTeamsInComparison()" class="px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700/70 text-[10px] font-bold text-slate-300 hover:text-white hover:border-brand-blue/35 transition">
+                  全チーム表示
+                </button>
+                <div id="teamComparisonVisibilityControls" class="flex flex-wrap justify-start lg:justify-end gap-1.5 max-w-xl"></div>
               </div>
             </div>
-            <div class="flex items-center justify-between mb-3 text-[10px] px-1">
-              <span class="text-slate-500 font-medium">※ バー内の縦点線: 目標ベンチマーク (対登録比)</span>
-              <span class="text-brand-emerald font-bold">緑字: 目標値</span>
-            </div>
-            <div id="funnelStepsContainer" class="space-y-3.5 pr-2"></div>
-            <div id="funnelBottleneckContainer"></div>
+            <div id="teamFunnelComparisonMatrix" class="team-funnel-compare-scroll overflow-x-auto pb-2"></div>
           </div>
-
-          <div class="xl:col-span-2 glass-panel rounded-2xl p-6">
-            <div class="mb-5">
-              <h3 class="text-base font-bold text-white">配下ファネル概要</h3>
-              <p class="text-[10px] text-slate-400 mt-0.5">メンバー別に、面談から決定までの流れを比較します。</p>
-            </div>
-            <div id="memberFunnelSummaryGrid" class="space-y-3"></div>
-          </div>
-          </section>
         </div>
 
         <div id="funnel-layer-member" class="funnel-layer-content hidden">
@@ -301,7 +264,7 @@
     </div>
   </main>
 
-  <script src="jpmap.min.js"></script>
+  <script src="jpmap.min.js?v=2.5.1"></script>
   <script src="data.js?v=2.5.1"></script>
   <script src="app.js?v=2.5.1"></script>
 </body>
