@@ -17,6 +17,7 @@ const state = {
   funnelComparisonSort: { stageKey: null, type: 'metric', direction: 'desc' },
   leaderboardMetric: 'calls',
   selectedFunnelLayer: 'team',
+  teamViewMode: 'detail',
   // 市場調査用サブタブと選択エリア
   currentMarketSubTab: 'pref',
   selectedAreaId: 'kanto',
@@ -125,13 +126,6 @@ function initEventListeners() {
       return;
     }
 
-    const memberBtn = e.target.closest('[data-comparison-member]');
-    if (memberBtn) {
-      e.preventDefault();
-      selectMemberAndScroll(memberBtn.dataset.comparisonMember);
-      return;
-    }
-
     const sortBtn = e.target.closest('[data-comparison-sort-stage]');
     if (sortBtn) {
       e.preventDefault();
@@ -222,15 +216,16 @@ window.switchTab = function(tabId) {
 
 function getSelectedTeamText() {
   const selector = document.getElementById('teamSelector');
-  if (!selector) return '東京CA 第1グループ';
+  if (!selector || selector.selectedIndex === -1 || !selector.options[selector.selectedIndex]) {
+    return '東京CA 第1グループ';
+  }
   return selector.options[selector.selectedIndex].text;
 }
 
-function getSelectedMemberText() {
-  const selector = document.getElementById('memberSelector');
-  if (!selector) return '担当者B';
-  return selector.options[selector.selectedIndex].text;
-}
+// チームレイヤーは現状、横並び比較ビューを常時表示する。
+window.setTeamViewMode = function(mode = 'detail') {
+  state.teamViewMode = mode;
+};
 
 function getPeriodText() {
   const labels = {
@@ -256,24 +251,33 @@ function updatePageContext() {
   const funnelTargetEl = document.getElementById('funnel-target-label');
   if (funnelTargetEl) funnelTargetEl.textContent = selectedTeam;
 
-  const memberFunnelTargetEl = document.getElementById('member-funnel-target-label');
-  if (memberFunnelTargetEl) memberFunnelTargetEl.textContent = getSelectedMemberText();
 }
 
 window.setFunnelLayer = function(layerId) {
-  state.selectedFunnelLayer = layerId;
-  ['overall', 'team', 'member'].forEach(layer => {
+  state.selectedFunnelLayer = 'team';
+  ['overall', 'team'].forEach(layer => {
     const btn = document.getElementById(`layer-btn-${layer}`);
     const content = document.getElementById(`funnel-layer-${layer}`);
     if (btn) {
-      btn.className = layer === layerId
+      btn.className = layer === 'team'
         ? 'funnel-layer-btn px-4 py-2 rounded-lg text-white bg-slate-800'
         : 'funnel-layer-btn px-4 py-2 rounded-lg text-slate-400 hover:text-white';
     }
     if (content) {
-      content.classList.toggle('hidden', layer !== layerId);
+      content.classList.toggle('hidden', layer !== 'team');
     }
   });
+
+  // レイヤー切り替え時にすべての詳細パネルを閉じる
+  document.querySelectorAll('.process-action-panel').forEach(panel => {
+    panel.classList.add('hidden');
+    panel.classList.remove('process-action-panel-open');
+  });
+  document.querySelectorAll('.process-action-chevron').forEach(chevron => {
+    chevron.classList.remove('rotate-180');
+  });
+
+  setTeamViewMode(state.teamViewMode);
 };
 
 // 期間の変更 (当月・先月・Q1・年度の積み上げ)
@@ -324,7 +328,7 @@ function animateKpiChanges(period) {
   }
 
   const baseKpis = dashboardData.kpis;
-  
+
   // 各KPIカードの数値を変更
   updateKpiCard('kpi-revenue', baseKpis.revenue.value * multiplier, 30000000 * multiplier, multiplier, "円", labelSuffix);
   updateKpiCard('kpi-interviews', baseKpis.interviews.value * multiplier, 180 * multiplier, multiplier, "件", labelSuffix);
@@ -602,167 +606,6 @@ function getTeamBottleneckScore(team, bottleneckKey) {
   return actualRate - targetRate;
 }
 
-function renderGlobalFunnel() {
-  const stepsContainer = document.getElementById('globalFunnelSteps');
-  const bottleneckPanel = document.getElementById('globalBottleneckPanel');
-  const criticalTeamList = document.getElementById('criticalTeamList');
-  const actionPlanList = document.getElementById('actionPlanList');
-  if (!stepsContainer || !bottleneckPanel || !criticalTeamList || !actionPlanList || !dashboardData.teamsData) return;
-
-  const fData = aggregateFunnelData();
-  const bottleneck = findFunnelBottleneck(fData);
-  const advices = getFunnelAdvices();
-  const advice = advices[bottleneck.stage.key];
-  const registrations = fData.registrations.actual || 1;
-  const placementRate = fData.placements.target > 0 ? (fData.placements.actual / fData.placements.target) * 100 : 0;
-  const confidence = placementRate >= 100 ? '高' : placementRate >= 85 ? '中' : '低';
-  const confidenceClass = placementRate >= 100 ? 'text-brand-emerald' : placementRate >= 85 ? 'text-brand-amber' : 'text-rose-300';
-
-  const confidenceEl = document.getElementById('global-funnel-confidence');
-  const placementRateEl = document.getElementById('global-funnel-placement-rate');
-  const revenueImpactEl = document.getElementById('global-funnel-revenue-impact');
-  if (confidenceEl) {
-    confidenceEl.textContent = confidence;
-    confidenceEl.className = `block text-lg ${confidenceClass} font-extrabold mt-0.5`;
-  }
-  if (placementRateEl) placementRateEl.textContent = `${placementRate.toFixed(0)}%`;
-  if (revenueImpactEl) revenueImpactEl.textContent = `-${(bottleneck.revenueImpact / 10000).toFixed(0)}万`;
-
-  stepsContainer.innerHTML = FUNNEL_STAGES.map((stage, index) => {
-    const metric = fData[stage.key];
-    const classSet = FUNNEL_STAGE_CLASSES[stage.accent];
-    const achievement = metric.target > 0 ? (metric.actual / metric.target) * 100 : 0;
-    const overallRate = (metric.actual / registrations) * 100;
-    const isBottleneck = stage.key === bottleneck.stage.key && bottleneck.gap < 0;
-    const prevMetric = index > 0 ? fData[FUNNEL_STAGES[index - 1].key] : null;
-    const transitionRate = prevMetric && prevMetric.actual > 0 ? (metric.actual / prevMetric.actual) * 100 : 100;
-    const transitionLabel = index === 0 ? '起点' : `前工程比 ${transitionRate.toFixed(1)}%`;
-
-    return `
-      <div class="funnel-stage-card ${isBottleneck ? 'is-bottleneck' : ''} bg-slate-950/35 border border-slate-800/70 rounded-2xl p-4 relative overflow-hidden">
-        <div class="flex items-start justify-between gap-2 mb-3">
-          <div class="flex items-center gap-2">
-            <span class="w-8 h-8 rounded-xl border ${classSet.icon} flex items-center justify-center">
-              <i data-lucide="${stage.icon}" class="w-4 h-4"></i>
-            </span>
-            <div>
-              <h4 class="text-xs font-extrabold text-white">${stage.name}</h4>
-              <p class="text-[9px] text-slate-500 font-semibold">${transitionLabel}</p>
-            </div>
-          </div>
-          ${isBottleneck ? '<span class="px-1.5 py-0.5 rounded bg-rose-500/15 border border-rose-500/25 text-rose-300 text-[8px] font-bold">詰まり</span>' : ''}
-        </div>
-        <div class="flex items-baseline justify-between mb-2">
-          <strong class="text-lg text-white font-extrabold">${metric.actual.toLocaleString()}</strong>
-          <span class="text-[10px] text-slate-400">目標 ${metric.target.toLocaleString()}</span>
-        </div>
-        <div class="w-full h-2 rounded-full bg-slate-800/80 overflow-hidden border border-slate-700/40">
-          <div class="h-full bg-gradient-to-r ${classSet.bar} rounded-full" style="width: ${Math.min(achievement, 120)}%"></div>
-        </div>
-        <div class="flex items-center justify-between mt-2 text-[9px]">
-          <span class="${classSet.text} font-bold">達成率 ${achievement.toFixed(0)}%</span>
-          <span class="text-slate-500">登録比 ${overallRate.toFixed(1)}%</span>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  bottleneckPanel.innerHTML = `
-    <div class="flex items-center gap-2 mb-4">
-      <div class="w-9 h-9 rounded-2xl bg-rose-500/10 border border-rose-500/25 text-rose-300 flex items-center justify-center">
-        <i data-lucide="shield-alert" class="w-4 h-4"></i>
-      </div>
-      <div>
-        <h4 class="text-sm font-bold text-white">最大ボトルネック</h4>
-        <p class="text-[10px] text-slate-500">全体ファネルから自動検出</p>
-      </div>
-    </div>
-    <div class="bg-rose-500/5 border border-rose-500/15 rounded-2xl p-4 mb-4">
-      <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">工程</span>
-      <h3 class="text-lg font-extrabold text-white mt-1">${advice.title}</h3>
-      <div class="flex items-center gap-2 mt-2 text-[10px]">
-        <span class="px-2 py-0.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-300 font-bold">目標比 ${bottleneck.gap.toFixed(1)}pt</span>
-        <span class="text-slate-500">不足 ${bottleneck.missingAtStage.toFixed(1)}件</span>
-      </div>
-    </div>
-    <div class="space-y-3 text-xs">
-      <div>
-        <span class="block text-[9.5px] text-slate-500 font-bold uppercase tracking-wider mb-1">売上影響</span>
-        <strong class="text-2xl text-rose-200 font-extrabold">-${(bottleneck.revenueImpact / 10000).toFixed(0)}万円</strong>
-      </div>
-      <div>
-        <span class="block text-[9.5px] text-slate-500 font-bold uppercase tracking-wider mb-1">改善レバー</span>
-        <p class="text-brand-amber font-bold leading-relaxed">${advice.lever}</p>
-      </div>
-    </div>
-  `;
-
-  const criticalTeams = Object.entries(dashboardData.teamsData)
-    .map(([teamId, team]) => ({
-      teamId,
-      team,
-      gap: getTeamBottleneckScore(team, bottleneck.stage.key)
-    }))
-    .sort((a, b) => a.gap - b.gap)
-    .slice(0, 3);
-
-  criticalTeamList.innerHTML = criticalTeams.map((item, index) => {
-    const badgeClass = index === 0
-      ? 'bg-rose-500/10 border-rose-500/20 text-rose-300'
-      : 'bg-brand-amber/10 border-brand-amber/20 text-brand-amber';
-    return `
-      <button onclick="selectTeamAndScroll('${item.teamId}')" class="w-full text-left p-3 rounded-2xl bg-slate-950/30 border border-slate-800/70 hover:border-brand-blue/35 hover:bg-slate-900/60 transition group">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <span class="text-[9px] text-slate-500 font-bold">#${index + 1} 要介入</span>
-            <h5 class="text-xs text-white font-bold mt-0.5 group-hover:text-brand-cyan transition">${item.team.name}</h5>
-          </div>
-          <span class="px-2 py-0.5 rounded-full border ${badgeClass} text-[9px] font-bold">${item.gap.toFixed(1)}pt</span>
-        </div>
-      </button>
-    `;
-  }).join('');
-
-  const actionItems = [
-    { icon: 'timer-reset', title: `${advice.owner}がSLAを戻す`, body: advice.action },
-    { icon: 'users-round', title: `対象チームを夕会で棚卸し`, body: criticalTeams.map(item => item.team.name).join(' / ') + ' の該当案件を工程別に確認する。' },
-    { icon: 'line-chart', title: '明日の確認指標', body: `${advice.title} の移行率を目標比 -5pt 以内まで戻せたかを見る。` }
-  ];
-
-  actionPlanList.innerHTML = actionItems.map((item, index) => `
-    <div class="bg-slate-950/30 border border-slate-800/70 rounded-2xl p-4">
-      <div class="flex items-center gap-2 mb-2">
-        <span class="w-7 h-7 rounded-xl bg-brand-emerald/10 border border-brand-emerald/20 text-brand-emerald flex items-center justify-center">
-          <i data-lucide="${item.icon}" class="w-3.5 h-3.5"></i>
-        </span>
-        <span class="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Action ${index + 1}</span>
-      </div>
-      <h5 class="text-xs font-bold text-white mb-1">${item.title}</h5>
-      <p class="text-[10.5px] text-slate-400 leading-relaxed">${item.body}</p>
-    </div>
-  `).join('');
-
-  lucide.createIcons();
-}
-
-function memberToFunnelData(member) {
-  const bookings = Math.max(
-    member.metrics.interviews,
-    Math.round(member.metrics.calls * (member.metrics.connection_rate / 100) * (member.metrics.booking_rate / 100))
-  );
-  const proposals = Math.round(member.metrics.interviews * member.metrics.proposals_per_int);
-
-  return {
-    registrations: { actual: member.metrics.calls, target: 450 },
-    bookings: { actual: bookings, target: 35 },
-    interviews: { actual: member.metrics.interviews, target: 30 },
-    proposals: { actual: proposals, target: 120 },
-    recommendations: { actual: member.metrics.recommendations, target: 22 },
-    setups: { actual: member.metrics.interviews_set, target: 11 },
-    placements: { actual: member.metrics.placements, target: 4 }
-  };
-}
-
 function renderLayerFunnels() {
   renderFunnelAnalysis(
     aggregateFunnelData(),
@@ -779,14 +622,6 @@ function renderLayerFunnels() {
     'team'
   );
 
-  const member = dashboardData.members.find(m => m.id === state.selectedMember) || dashboardData.members[1];
-  renderFunnelAnalysis(
-    memberToFunnelData(member),
-    'memberFunnelStepsContainer',
-    'memberFunnelBottleneckContainer',
-    'member'
-  );
-
   renderFunnelSummaryList(
     'teamFunnelSummaryGrid',
     Object.entries(dashboardData.teamsData).map(([id, teamData]) => ({
@@ -798,16 +633,6 @@ function renderLayerFunnels() {
     }))
   );
 
-  const memberItems = dashboardData.members.map(memberData => ({
-    id: memberData.id,
-    name: memberData.name,
-    caption: memberData.role,
-    funnel: memberToFunnelData(memberData),
-    onClick: `selectMemberAndScroll('${memberData.id}')`
-  }));
-
-  renderFunnelSummaryList('memberFunnelSummaryGrid', memberItems);
-  renderFunnelSummaryList('allMemberFunnelSummaryGrid', memberItems);
   renderTeamFunnelComparisonMatrix();
 
   updatePageContext();
@@ -882,15 +707,6 @@ function sumFunnelItems(items) {
 }
 
 function getFunnelComparisonItems(mode = state.funnelComparisonMode) {
-  if (mode === 'member') {
-    return dashboardData.members.map(member => ({
-      id: member.id,
-      name: member.name,
-      caption: member.role,
-      funnel: memberToFunnelData(member)
-    }));
-  }
-
   if (mode === 'region') {
     const teams = dashboardData.teamsData;
     return [
@@ -930,8 +746,7 @@ function getFunnelComparisonModeLabel(mode = state.funnelComparisonMode) {
   return {
     team: 'チーム',
     region: '地域',
-    age: '年齢',
-    member: '個人'
+    age: '年齢'
   }[mode] || 'チーム';
 }
 
@@ -969,12 +784,12 @@ function renderTeamFunnelComparisonMatrix() {
     });
   }
 
-  ['team', 'region', 'age', 'member'].forEach(modeId => {
+  ['team', 'region', 'age'].forEach(modeId => {
     const btn = document.getElementById(`comparison-mode-${modeId}`);
     if (btn) {
       btn.className = modeId === mode
-        ? 'comparison-mode-btn px-3 py-1.5 rounded-lg text-white bg-slate-800'
-        : 'comparison-mode-btn px-3 py-1.5 rounded-lg text-slate-400 hover:text-white';
+        ? 'comparison-mode-btn px-3 py-1 rounded-lg bg-slate-800/80 border border-slate-700/70 text-white'
+        : 'comparison-mode-btn px-3 py-1 rounded-lg bg-slate-950/40 border border-slate-800/80 text-slate-400 hover:text-white hover:border-brand-blue/35';
     }
   });
 
@@ -998,26 +813,24 @@ function renderTeamFunnelComparisonMatrix() {
     return;
   }
 
-  const columnWidth = 238;
+  const labelWidth = 118;
+  const columnWidth = 104;
   const overallFunnel = sumFunnelItems(items);
   const stickyLabelClass = 'sticky left-0 z-50 bg-[#020617] border-r border-slate-800/80';
   const stickyOverallClass = 'sticky z-40 bg-[#020617] border-r border-slate-800/80';
   const overallHeaderCell = `
-    <div class="${stickyOverallClass} team-funnel-compare-col border-l border-slate-800/70 p-3" style="left: 156px;">
+    <div class="${stickyOverallClass} team-funnel-compare-col border-l border-slate-800/70 p-2" style="left: ${labelWidth}px;">
       <h5 class="text-xs font-bold text-white truncate">全体</h5>
       <p class="text-[9px] text-slate-500 truncate mt-0.5">${getFunnelComparisonModeLabel(mode)}合算</p>
     </div>
   `;
 
   const headerCells = visibleItems.map(item => {
-    const titleAttrs = mode === 'member'
-      ? `data-comparison-member="${item.id}"`
-      : '';
     return `
-      <div class="team-funnel-compare-col border-l border-slate-800/70 bg-slate-950/20 p-3">
+      <div class="team-funnel-compare-col border-l border-slate-800/70 bg-slate-950/20 p-2">
         <div class="flex items-start justify-between gap-2">
-          <button ${titleAttrs} class="min-w-0 text-left group ${mode === 'member' ? '' : 'cursor-default'}">
-            <h5 class="text-xs font-bold text-white truncate ${mode === 'member' ? 'group-hover:text-brand-cyan transition' : ''}">${item.name}</h5>
+          <button class="min-w-0 text-left group cursor-default">
+            <h5 class="text-xs font-bold text-white truncate">${item.name}</h5>
             <p class="text-[9px] text-slate-500 truncate mt-0.5">${item.caption || ''}</p>
           </button>
           <button data-comparison-toggle="${item.id}" class="p-1 rounded-md text-slate-500 hover:text-white hover:bg-slate-800/70 transition" title="この項目を非表示">
@@ -1031,12 +844,12 @@ function renderTeamFunnelComparisonMatrix() {
   const stageRows = FUNNEL_STAGES.map((stage, index) => {
     const isSortedStage = state.funnelComparisonSort?.stageKey === stage.key && state.funnelComparisonSort?.type !== 'transition';
     const labelCell = `
-      <button data-comparison-sort-stage="${stage.key}" class="${stickyLabelClass} p-2 flex items-center gap-1.5 text-left group hover:bg-slate-900/80 transition w-full h-full min-h-[44px]">
-        <span class="w-6 h-6 rounded-lg border ${FUNNEL_STAGE_CLASSES[stage.accent].icon} flex items-center justify-center flex-shrink-0">
+      <button data-comparison-sort-stage="${stage.key}" class="${stickyLabelClass} p-1.5 flex items-center gap-1.5 text-left group hover:bg-slate-900/80 transition w-full h-full min-h-[28px]">
+        <span class="w-[18px] h-[18px] rounded-md border ${FUNNEL_STAGE_CLASSES[stage.accent].icon} flex items-center justify-center flex-shrink-0">
           <i data-lucide="${stage.icon}" class="w-3 h-3"></i>
         </span>
         <div class="min-w-0 flex-1">
-          <p class="text-[10px] font-extrabold text-white leading-tight">${index + 1}. ${stage.fullName}</p>
+          <p class="text-[9px] font-extrabold text-white leading-tight">${index + 1}. ${stage.fullName}</p>
         </div>
         <i data-lucide="${isSortedStage && state.funnelComparisonSort.direction === 'asc' ? 'arrow-up-wide-narrow' : 'arrow-down-wide-narrow'}" class="w-3.5 h-3.5 ${isSortedStage ? 'text-brand-cyan opacity-100' : 'text-slate-500 opacity-0 group-hover:opacity-100'} transition"></i>
       </button>
@@ -1049,18 +862,18 @@ function renderTeamFunnelComparisonMatrix() {
     const overallActualRate = overallRegActual > 0 ? (overallMetric.actual / overallRegActual) * 100 : 0;
     const overallTargetRate = overallRegTarget > 0 ? (overallMetric.target / overallRegTarget) * 100 : 0;
     const overallStageCell = `
-      <div class="${stickyOverallClass} border-l border-t border-slate-800/60 p-2" style="left: 156px;">
+      <div class="${stickyOverallClass} border-l border-t border-slate-800/60 p-1.5" style="left: ${labelWidth}px;">
         <div class="w-full text-left">
-          <div class="flex items-center justify-between gap-2">
-            <span class="text-[10px] text-slate-400 font-semibold">
-              実績 <strong class="text-xs text-white font-extrabold">${overallMetric.actual.toLocaleString()}</strong>
-              <span class="text-slate-600 mx-0.5">/</span>
-              目標 <strong class="text-xs text-slate-300 font-extrabold">${overallMetric.target.toLocaleString()}</strong>
+          <div class="flex items-center justify-between gap-1">
+            <span class="text-[9px] text-slate-400 font-semibold truncate">
+              <strong class="text-[10.5px] text-white font-extrabold">${overallMetric.actual.toLocaleString()}</strong>
+              <span class="text-slate-600">/</span>
+              <strong class="text-[10.5px] text-slate-300 font-extrabold">${overallMetric.target.toLocaleString()}</strong>
             </span>
           </div>
-          <div class="mt-1.5 w-full bg-slate-800/60 rounded-md h-4 relative flex items-center overflow-hidden border border-slate-800">
+          <div class="mt-1 w-full bg-slate-800/60 rounded-md h-3.5 relative flex items-center overflow-hidden border border-slate-800">
             <div class="bg-gradient-to-r ${overallClasses.bar} h-full rounded-l-lg opacity-85" style="width: ${Math.min(overallActualRate, 100)}%"></div>
-            <span class="absolute left-2 text-[9px] font-bold text-white drop-shadow">${overallActualRate.toFixed(1)}%</span>
+            <span class="absolute left-2 text-[8px] font-bold text-white drop-shadow">${overallActualRate.toFixed(1)}%</span>
             <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(overallTargetRate, 100)}%" title="目標全体比: ${overallTargetRate.toFixed(1)}%"></div>
           </div>
         </div>
@@ -1077,18 +890,18 @@ function renderTeamFunnelComparisonMatrix() {
       const overallTargetRate = regTarget > 0 ? (metric.target / regTarget) * 100 : 0;
 
       return `
-        <div class="border-l border-t border-slate-800/60 p-2 bg-slate-950/20">
+        <div class="border-l border-t border-slate-800/60 p-1.5 bg-slate-950/20">
           <div class="w-full text-left">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-[10px] text-slate-400 font-semibold">
-                実績 <strong class="text-xs text-white font-extrabold">${metric.actual.toLocaleString()}</strong>
-                <span class="text-slate-600 mx-0.5">/</span>
-                目標 <strong class="text-xs text-slate-300 font-extrabold">${metric.target.toLocaleString()}</strong>
+            <div class="flex items-center justify-between gap-1">
+              <span class="text-[9px] text-slate-400 font-semibold truncate">
+                <strong class="text-[10.5px] text-white font-extrabold">${metric.actual.toLocaleString()}</strong>
+                <span class="text-slate-600">/</span>
+                <strong class="text-[10.5px] text-slate-300 font-extrabold">${metric.target.toLocaleString()}</strong>
               </span>
             </div>
-            <div class="mt-1.5 w-full bg-slate-800/60 rounded-md h-4 relative flex items-center overflow-hidden border border-slate-800">
+            <div class="mt-1 w-full bg-slate-800/60 rounded-md h-3.5 relative flex items-center overflow-hidden border border-slate-800">
               <div class="bg-gradient-to-r ${classes.bar} h-full rounded-l-lg opacity-85" style="width: ${Math.min(overallActualRate, 100)}%"></div>
-              <span class="absolute left-2 text-[9px] font-bold text-white drop-shadow">${overallActualRate.toFixed(1)}%</span>
+              <span class="absolute left-2 text-[8px] font-bold text-white drop-shadow">${overallActualRate.toFixed(1)}%</span>
               <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(overallTargetRate, 100)}%" title="目標全体比: ${overallTargetRate.toFixed(1)}%"></div>
             </div>
           </div>
@@ -1098,12 +911,12 @@ function renderTeamFunnelComparisonMatrix() {
 
     const isSortedTransition = state.funnelComparisonSort?.stageKey === stage.key && state.funnelComparisonSort?.type === 'transition';
     const transitionLabelCell = `
-      <button data-comparison-sort-stage="${stage.key}" data-comparison-sort-type="transition" class="${stickyLabelClass} border-t border-slate-800/70 p-2 flex items-center justify-between text-left group hover:bg-slate-900/80 transition w-full h-full min-h-[44px]">
+      <button data-comparison-sort-stage="${stage.key}" data-comparison-sort-type="transition" class="${stickyLabelClass} border-t border-slate-800/70 p-1.5 flex items-center justify-between text-left group hover:bg-slate-900/80 transition w-full h-full min-h-[28px]">
         <div class="flex items-center gap-1.5">
-          <span class="w-6 h-6 rounded-lg bg-slate-900/80 border border-slate-800/80 flex items-center justify-center flex-shrink-0">
-            <i data-lucide="arrow-down" class="w-3 h-3 text-slate-400"></i>
+          <span class="w-5 h-5 rounded-lg bg-slate-900/80 border border-slate-800/80 flex items-center justify-center flex-shrink-0">
+            <i data-lucide="arrow-down-up" class="w-3 h-3 text-slate-400"></i>
           </span>
-          <span class="text-[10px] font-extrabold text-slate-400 group-hover:text-white transition">前工程比</span>
+          <span class="text-[9.5px] font-extrabold text-slate-400 group-hover:text-white transition">プロセス移行率</span>
         </div>
         <i data-lucide="${isSortedTransition && state.funnelComparisonSort.direction === 'asc' ? 'arrow-up-wide-narrow' : 'arrow-down-wide-narrow'}" class="w-3.5 h-3.5 ${isSortedTransition ? 'text-brand-cyan opacity-100' : 'text-slate-500 opacity-0 group-hover:opacity-100'} transition"></i>
       </button>
@@ -1124,26 +937,23 @@ function renderTeamFunnelComparisonMatrix() {
           : transitionGap >= -3
             ? 'bg-slate-300/80'
             : 'bg-rose-400';
+        const isStageExpanded = state.expandedStages?.[stage.key] || false;
         return `
-          <div class="${stickyOverallClass} border-l border-t border-slate-800/60 px-2.5 py-2.5 ${isWeakTransition ? 'bg-rose-950' : ''}" style="left: 156px;">
-            <div class="flex items-center gap-2 text-[10px] text-slate-500">
-              <span class="w-6 h-6 rounded-lg bg-slate-900/80 border border-slate-800/80 flex items-center justify-center flex-shrink-0">
-                <i data-lucide="arrow-down" class="w-3.5 h-3.5 text-slate-400"></i>
-              </span>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center justify-between gap-2">
-                  <span class="font-bold">前工程比</span>
-                  <span class="whitespace-nowrap">
-                    実績 <strong class="text-slate-200">${transitionRate.toFixed(1)}%</strong>
-                    <span class="text-slate-600 mx-1">/</span>
-                    目標 <strong class="text-slate-300">${targetTransitionRate.toFixed(1)}%</strong>
+          <div class="${stickyOverallClass} border-l border-t border-slate-800/60 p-1.5 ${isWeakTransition ? 'bg-rose-950' : ''} flex flex-col justify-start gap-0.5" style="left: ${labelWidth}px;">
+            <button onclick="toggleComparisonStageActions('${stage.key}', this)" data-action-stage="${stage.key}" class="w-full text-left py-0.5 hover:text-brand-cyan transition flex items-center justify-between gap-2 group">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <div class="min-w-0">
+                  <span class="text-[9.5px] whitespace-nowrap text-slate-200 group-hover:text-white transition">
+                    <strong>${transitionRate.toFixed(1)}%</strong>
+                    <span class="text-slate-600">/</span>
+                    <span class="text-slate-400">${targetTransitionRate.toFixed(1)}%</span>
                   </span>
                 </div>
-                <div class="mt-1.5 h-2 bg-slate-800/80 rounded-full overflow-hidden relative">
-                  <div class="h-full rounded-full ${transitionBarClass}" style="width: ${Math.min(transitionRate, 100)}%"></div>
-                  <div class="absolute top-0 bottom-0 border-l border-dashed border-emerald-300/80" style="left: ${Math.min(targetTransitionRate, 100)}%"></div>
-                </div>
               </div>
+              <i data-lucide="chevron-down" class="process-action-chevron w-3.5 h-3.5 text-slate-500 transition-transform group-hover:text-brand-cyan ${isStageExpanded ? 'rotate-180' : ''}"></i>
+            </button>
+            <div class="mt-0.5 w-full bg-slate-800/60 rounded-full h-1 relative overflow-hidden">
+              <div class="h-full rounded-full ${transitionBarClass}" style="width: ${Math.min(transitionRate, 100)}%"></div>
             </div>
           </div>
         `;
@@ -1162,31 +972,32 @@ function renderTeamFunnelComparisonMatrix() {
           : transitionGap >= -3
             ? 'bg-slate-300/80'
             : 'bg-rose-400';
+        const isStageExpanded = state.expandedStages?.[stage.key] || false;
         const panelId = `team-compare-${mode}-${item.id}-${stage.key}-actions`;
-        const actionItems = getProcessActionChecks(stage.key, fData, mode === 'member' ? 'member' : 'team');
+        const actionItems = getProcessActionChecks(stage.key, fData, 'team');
         const actionPanel = `
-          <div id="${panelId}" class="process-action-panel hidden mt-2 p-2 rounded-xl bg-slate-950/45 border border-slate-800/70 space-y-2">
+          <div id="${panelId}" class="process-action-panel ${isStageExpanded ? '' : 'hidden'} mt-2 space-y-2 border-l border-slate-800/80 pl-2">
             ${actionItems.map(action => {
               const itemClass = action.rate >= 100
-                ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20'
+                ? 'text-emerald-300 font-bold'
                 : action.rate >= 80
-                  ? 'text-brand-amber bg-brand-amber/10 border-brand-amber/20'
-                  : 'text-rose-300 bg-rose-500/10 border-rose-500/20';
+                  ? 'text-brand-amber font-bold'
+                  : 'text-rose-300 font-bold';
               const barClass = action.rate >= 100
                 ? 'bg-emerald-400'
                 : action.rate >= 80
                   ? 'bg-brand-amber'
                   : 'bg-rose-400';
               return `
-                <div class="rounded-lg bg-slate-900/50 border border-slate-800/70 p-2">
-                  <div class="flex items-center justify-between gap-2 mb-1.5">
-                    <h6 class="text-[9.5px] font-bold text-white">${action.label}</h6>
-                    <span class="px-1.5 py-0.5 rounded border ${itemClass} text-[8px] font-bold">${action.rate.toFixed(0)}%</span>
+                <div class="py-1">
+                  <div class="flex items-center justify-between gap-2 mb-1">
+                    <h6 class="text-[9px] font-medium text-slate-300 truncate">${action.label}</h6>
+                    <span class="${itemClass} text-[8.5px]">${action.rate.toFixed(0)}%</span>
                   </div>
-                  <div class="h-1.5 bg-slate-800/80 rounded-full overflow-hidden">
+                  <div class="h-1 bg-slate-800/80 rounded-full overflow-hidden">
                     <div class="h-full rounded-full ${barClass}" style="width: ${Math.min(action.rate, 100)}%"></div>
                   </div>
-                  <div class="mt-1 flex justify-between text-[8px] text-slate-500">
+                  <div class="mt-0.5 flex justify-between text-[7.5px] text-slate-500">
                     <span>${action.actual.toLocaleString()}${action.unit}</span>
                     <span>${action.target.toLocaleString()}${action.unit}</span>
                   </div>
@@ -1196,28 +1007,22 @@ function renderTeamFunnelComparisonMatrix() {
           </div>
         `;
         return `
-          <div class="border-l border-t border-slate-800/60 px-2.5 py-2.5 ${isWeakTransition ? 'bg-rose-500/10' : 'bg-slate-950/30'}">
-            <button data-action-panel="${panelId}" class="w-full text-left group">
-              <div class="pointer-events-none flex items-center gap-2 text-[10px] text-slate-500">
-                <span class="w-6 h-6 rounded-lg bg-slate-900/80 border border-slate-800/80 flex items-center justify-center flex-shrink-0 group-hover:border-brand-blue/30 transition">
-                  <i data-lucide="arrow-down" class="process-action-chevron w-3.5 h-3.5 text-slate-400 transition-transform group-hover:text-brand-cyan"></i>
-                </span>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center justify-between gap-2">
-                    <span class="font-bold">前工程比</span>
-                    <span class="whitespace-nowrap">
-                      実績 <strong class="text-slate-200">${transitionRate.toFixed(1)}%</strong>
-                      <span class="text-slate-600 mx-1">/</span>
-                      目標 <strong class="text-slate-300">${targetTransitionRate.toFixed(1)}%</strong>
-                    </span>
-                  </div>
-                  <div class="mt-1.5 h-2 bg-slate-800/80 rounded-full overflow-hidden relative">
-                    <div class="h-full rounded-full ${transitionBarClass}" style="width: ${Math.min(transitionRate, 100)}%"></div>
-                    <div class="absolute top-0 bottom-0 border-l border-dashed border-emerald-300/80" style="left: ${Math.min(targetTransitionRate, 100)}%"></div>
-                  </div>
+          <div class="border-l border-t border-slate-800/60 p-1.5 ${isWeakTransition ? 'bg-rose-500/10' : 'bg-slate-950/30'} flex flex-col justify-start gap-0.5">
+            <button onclick="toggleComparisonStageActions('${stage.key}', this)" data-action-stage="${stage.key}" class="w-full text-left py-0.5 hover:text-brand-cyan transition flex items-center justify-between gap-2 group">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <div class="min-w-0">
+                  <span class="text-[9.5px] whitespace-nowrap text-slate-200 group-hover:text-white transition">
+                    <strong>${transitionRate.toFixed(1)}%</strong>
+                    <span class="text-slate-600">/</span>
+                    <span class="text-slate-400">${targetTransitionRate.toFixed(1)}%</span>
+                  </span>
                 </div>
               </div>
+              <i data-lucide="chevron-down" class="process-action-chevron w-3.5 h-3.5 text-slate-500 transition-transform group-hover:text-brand-cyan ${isStageExpanded ? 'rotate-180' : ''}"></i>
             </button>
+            <div class="mt-0.5 w-full bg-slate-800/60 rounded-full h-1 relative overflow-hidden">
+              <div class="h-full rounded-full ${transitionBarClass}" style="width: ${Math.min(transitionRate, 100)}%"></div>
+            </div>
             ${actionPanel}
           </div>
         `;
@@ -1228,8 +1033,8 @@ function renderTeamFunnelComparisonMatrix() {
   }).join('');
 
   matrix.innerHTML = `
-    <div class="inline-grid min-w-full rounded-xl border border-slate-800/80 bg-slate-900/30" style="grid-template-columns: 156px ${columnWidth}px repeat(${visibleItems.length}, ${columnWidth}px);">
-      <div class="${stickyLabelClass} p-3">
+    <div class="inline-grid min-w-full rounded-xl border border-slate-800/80 bg-slate-900/30" style="grid-template-columns: ${labelWidth}px ${columnWidth}px repeat(${visibleItems.length}, ${columnWidth}px);">
+      <div class="${stickyLabelClass} p-2">
         <p class="text-xs font-bold text-slate-200">比較指標</p>
         <p class="text-[8.5px] text-slate-500 mt-1">工程名は左固定</p>
       </div>
@@ -1323,30 +1128,34 @@ function renderFunnelAnalysis(fData, stepsContainerId, bottleneckContainerId, sc
 
     htmlContent += `
       <div class="relative">
-        <button onclick="toggleProcessActions('${panelId}', this)" class="w-full text-left group">
-          <div class="flex justify-between items-center mb-1 text-[11px]">
-            <span class="font-bold flex items-center gap-1.5">
-              <span class="w-2 h-2 rounded-full ${classes.text.replace('text-', 'bg-')}"></span>
-              ${index + 1}. ${stage.fullName}
-            </span>
-            <span class="text-slate-300 font-semibold flex items-center gap-2">
-              <span>
-                ${actualVal.toLocaleString()} / <span class="text-brand-emerald font-bold">目標 ${targetVal.toLocaleString()}</span>
-                <span class="text-[10px] text-slate-500 font-normal">
-                  (${index === 0 ? `達成率 ${achievement.toFixed(0)}%` : `全体比 ${overallActualRate.toFixed(1)}% / 目標 ${overallTargetRate.toFixed(1)}%`})
-                </span>
-              </span>
-              <i data-lucide="chevron-down" class="process-action-chevron w-3.5 h-3.5 text-slate-500 transition-transform group-hover:text-brand-cyan"></i>
-            </span>
+        <button onclick="toggleProcessActions('${panelId}', this)" class="w-full text-left group flex items-center gap-3 py-1 px-1 rounded-xl hover:bg-slate-900/10 transition-colors">
+          <div class="w-7 h-7 rounded-lg border ${classes.icon} flex items-center justify-center flex-shrink-0">
+            <i data-lucide="${stage.icon}" class="w-3.5 h-3.5"></i>
           </div>
-          <div class="w-full bg-slate-800/60 rounded-lg h-8 relative flex items-center overflow-hidden border border-slate-800 group-hover:border-brand-blue/30 transition">
-            <div class="bg-gradient-to-r ${classes.bar} h-full rounded-l-lg opacity-85 transition-all duration-500" style="width: ${Math.min(overallActualRate, 100)}%"></div>
-            <span class="absolute left-3 text-xs font-bold text-white drop-shadow">${overallActualRate.toFixed(1)}%</span>
-            <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(overallTargetRate, 100)}%" title="目標全体比: ${overallTargetRate.toFixed(1)}%"></div>
+          <div class="flex-1 min-w-0">
+            <div class="flex justify-between items-center mb-0.5 text-[11px]">
+              <span class="font-bold text-white">
+                ${index + 1}. ${stage.fullName}
+              </span>
+              <span class="text-slate-300 font-semibold flex items-center gap-1.5">
+                <span>
+                  ${actualVal.toLocaleString()} / <span class="text-brand-emerald font-bold">目標 ${targetVal.toLocaleString()}</span>
+                  <span class="text-[10px] text-slate-500 font-normal">
+                    (${index === 0 ? `${achievement.toFixed(0)}%` : `${overallActualRate.toFixed(1)}%`})
+                  </span>
+                </span>
+                <i data-lucide="chevron-down" class="process-action-chevron w-3.5 h-3.5 text-slate-500 transition-transform group-hover:text-brand-cyan"></i>
+              </span>
+            </div>
+            <div class="w-full bg-slate-800/60 rounded-md h-5.5 relative flex items-center overflow-hidden border border-slate-800 group-hover:border-brand-blue/30 transition">
+              <div class="bg-gradient-to-r ${classes.bar} h-full rounded-l-lg opacity-85 transition-all duration-500" style="width: ${Math.min(overallActualRate, 100)}%"></div>
+              <span class="absolute left-2.5 text-[10px] font-bold text-white drop-shadow">${overallActualRate.toFixed(1)}%</span>
+              <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(overallTargetRate, 100)}%" title="目標全体比: ${overallTargetRate.toFixed(1)}%"></div>
+            </div>
           </div>
         </button>
         <div id="${panelId}" class="process-action-panel hidden overflow-hidden">
-          <div class="mt-2 p-3 rounded-xl bg-slate-950/35 border border-slate-800/70 grid grid-cols-1 gap-3">
+          <div class="mt-1.5 p-2 rounded-xl bg-slate-950/35 border border-slate-800/70 grid grid-cols-1 gap-2">
             ${actionItems.map(item => {
               const itemClass = item.rate >= 100
                 ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
@@ -1354,19 +1163,19 @@ function renderFunnelAnalysis(fData, stepsContainerId, bottleneckContainerId, sc
                   ? 'text-brand-amber bg-brand-amber/10 border-brand-amber/20'
                   : 'text-rose-400 bg-rose-500/10 border-rose-500/20';
               return `
-                <div class="rounded-xl bg-slate-900/50 border border-slate-800/70 p-3">
-                  <div class="flex items-start justify-between gap-2 mb-2">
+                <div class="rounded-xl bg-slate-900/50 border border-slate-800/70 p-2">
+                  <div class="flex items-start justify-between gap-2 mb-1">
                     <div>
                       <h6 class="text-[10px] font-bold text-white">${item.label}</h6>
                       <p class="text-[8.5px] text-slate-500 mt-0.5">${item.reason}</p>
                     </div>
                     <span class="px-1.5 py-0.5 rounded border ${itemClass} text-[8px] font-bold">${item.rate.toFixed(0)}%</span>
                   </div>
-                  <div class="flex justify-between text-[9px] text-slate-400 mb-1">
+                  <div class="flex justify-between text-[9px] text-slate-400 mb-0.5">
                     <span>実施 ${item.actual.toLocaleString()}${item.unit}</span>
                     <span>基準 ${item.target.toLocaleString()}${item.unit}</span>
                   </div>
-                  <div class="h-1.5 bg-slate-800/80 rounded-full overflow-hidden">
+                  <div class="h-1 bg-slate-800/80 rounded-full overflow-hidden">
                     <div class="h-full rounded-full bg-gradient-to-r from-brand-blue to-brand-cyan" style="width: ${Math.min(item.rate, 100)}%"></div>
                   </div>
                 </div>
@@ -1389,20 +1198,23 @@ function renderFunnelAnalysis(fData, stepsContainerId, bottleneckContainerId, sc
         ? 'text-emerald-400 font-bold bg-emerald-500/10 border-emerald-500/20'
         : 'text-rose-400 font-bold bg-rose-500/10 border-rose-500/20';
 
+      const nextPanelId = `${stepsContainerId}-${nextStage.key}-actions`;
+
       htmlContent += `
-        <div class="my-1.5">
-          <div class="w-full flex items-center justify-between px-3 py-1.5 rounded-lg bg-slate-900/20 border border-slate-800/40 text-[9.5px]">
-            <span class="text-slate-400 font-semibold flex items-center gap-1">
-              <i data-lucide="arrow-down" class="w-3.5 h-3.5 text-slate-500"></i>
-              <span>前工程比:</span>
-            </span>
-            <div class="flex items-center gap-2.5">
-              <span class="text-slate-300">実績: <strong class="text-white">${prevStepActualRate.toFixed(1)}%</strong></span>
-              <span class="text-slate-600">|</span>
-              <span class="text-slate-400">目標: <strong class="text-brand-emerald">${prevStepTargetRate.toFixed(1)}%</strong></span>
-              <span class="px-1.5 py-0.5 rounded border ${gapClass} text-[8.5px]">目標比 ${gapSign}${gap.toFixed(1)}pt</span>
-            </div>
+        <div class="my-0.5 px-3 flex items-center gap-3">
+          <div class="w-7 flex justify-center flex-shrink-0">
+            <i data-lucide="arrow-down" class="w-3.5 h-3.5 text-slate-600"></i>
           </div>
+          <button onclick="toggleProcessActions('${nextPanelId}', this)" class="flex-1 flex items-center justify-between py-1 text-[9.5px] text-slate-500 hover:text-brand-cyan group/trans transition">
+            <span class="font-bold flex items-center transition-colors group-hover/trans:text-brand-cyan">
+              <span>移行率: <strong class="text-slate-200 font-extrabold">${prevStepActualRate.toFixed(1)}%</strong></span>
+            </span>
+            <div class="flex items-center gap-2">
+              <span class="text-slate-400 group-hover/trans:text-slate-300 transition-colors">目標: <strong class="text-brand-emerald/90 font-bold">${prevStepTargetRate.toFixed(1)}%</strong></span>
+              <span class="px-1.5 py-0.5 rounded border ${gapClass} text-[8.5px] scale-90 origin-right transition-transform">目標比 ${gapSign}${gap.toFixed(1)}pt</span>
+              <i data-lucide="chevron-down" class="process-action-chevron w-3.5 h-3.5 text-slate-500 transition-transform group-hover/trans:text-brand-cyan"></i>
+            </div>
+          </button>
         </div>
       `;
     }
@@ -1668,10 +1480,22 @@ function toggleProcessActions(panelId, trigger) {
   panel.classList.toggle('hidden');
   panel.classList.toggle('process-action-panel-open');
 
+  const isHidden = panel.classList.contains('hidden');
+
+  // Rotate chevron in the trigger itself
   const chevron = trigger?.querySelector('.process-action-chevron');
   if (chevron) {
-    chevron.classList.toggle('rotate-180', !panel.classList.contains('hidden'));
+    chevron.classList.toggle('rotate-180', !isHidden);
   }
+
+  // Synchronize chevrons on all buttons that target this panelId
+  const triggers = document.querySelectorAll(`[onclick*="${panelId}"]`);
+  triggers.forEach(t => {
+    const chev = t.querySelector('.process-action-chevron');
+    if (chev) {
+      chev.classList.toggle('rotate-180', !isHidden);
+    }
+  });
 }
 
 window.toggleProcessActions = toggleProcessActions;
@@ -2140,7 +1964,7 @@ function renderFunnel() {
     const overallActualRate = regActual > 0 ? (actualVal / regActual) * 100 : 0;
     const overallTargetRate = regTarget > 0 ? (targetVal / regTarget) * 100 : 0;
 
-    // 前工程比（移行率）コネクターの生成 (登録ステップ以外)
+    // プロセス移行率コネクターの生成 (登録ステップ以外)
     if (i > 0) {
       const prevStage = stages[i - 1];
       const prevActualVal = fData[prevStage.key].actual;
@@ -2156,7 +1980,7 @@ function renderFunnel() {
         <div class="flex items-center justify-between px-3 py-1.5 my-1.5 rounded-lg bg-slate-900/20 border border-slate-800/40 text-[9.5px]">
           <span class="text-slate-400 font-semibold flex items-center gap-1">
             <i data-lucide="arrow-down" class="w-3.5 h-3.5 text-slate-500 animate-bounce"></i>
-            <span>前工程比 (移行率):</span>
+            <span>プロセス移行率:</span>
           </span>
           <div class="flex items-center gap-2.5">
             <span class="text-slate-300">実績: <strong class="text-white">${prevStepActualRate.toFixed(1)}%</strong></span>
@@ -3402,16 +3226,16 @@ function createTeamMiniBarChart(elementSelector, targetData, actualData, categor
 
 // チーム選択 ＆ 最上部スマートスクロール連携
 window.selectTeamAndScroll = function(teamId) {
-  const selector = document.getElementById('teamSelector');
-  if (selector) {
-    selector.value = teamId;
-    // changeイベントを発火させて既存のチーム切り替えロジックと連動させる
-    selector.dispatchEvent(new Event('change'));
-    switchTab('overview');
-    setFunnelLayer('team');
-    
-    // 最上部へスマートにスクロール
-    const scrollArea = document.getElementById('mainScrollArea') || document.querySelector('main');
+  state.selectedTeam = teamId;
+
+  // 画面遷移
+  switchTab('overview');
+  setFunnelLayer('team');
+  renderAll();
+
+  // 最上部へスマートにスクロール
+  const scrollArea = document.getElementById('mainScrollArea') || document.querySelector('main');
+  if (scrollArea) {
     scrollArea.scrollTo({
       top: 0,
       behavior: 'smooth'
@@ -4271,4 +4095,30 @@ window.resetAreaDefinitionsToDefault = function() {
     renderAll();
     alert('初期設定に復元しました。');
   }
+};
+
+// -------------------------------------------------------------
+// 5. メンバー横並び比較・同期アコーディオン機能 (NEW)
+// -------------------------------------------------------------
+
+// ファネル比較の特定ステージのアクションリストを同期開閉
+window.toggleComparisonStageActions = function(stageKey, clickedEl) {
+  state.expandedStages = state.expandedStages || {};
+  const isExpanded = !state.expandedStages[stageKey];
+  state.expandedStages[stageKey] = isExpanded;
+
+  // すべての該当アクションパネルをトグル
+  const panels = document.querySelectorAll(`[id$="-${stageKey}-actions"]`);
+  panels.forEach(panel => {
+    panel.classList.toggle('hidden', !isExpanded);
+  });
+
+  // すべての該当 chevrons を回転
+  const buttons = document.querySelectorAll(`[data-action-stage="${stageKey}"]`);
+  buttons.forEach(btn => {
+    const chevron = btn.querySelector('.process-action-chevron');
+    if (chevron) {
+      chevron.classList.toggle('rotate-180', isExpanded);
+    }
+  });
 };
