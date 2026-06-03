@@ -56,14 +56,6 @@
         <i data-lucide="git-branch" class="w-4 h-4"></i>
         <span>ファネル分析</span>
       </button>
-      <button onclick="switchTab('funnel')" id="tab-btn-funnel" class="sidebar-link flex items-center gap-3 w-full px-4 py-2.5 text-xs font-semibold rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/40">
-        <i data-lucide="trending-up" class="w-4 h-4"></i>
-        <span>売上進捗</span>
-      </button>
-      <button onclick="switchTab('correlation')" id="tab-btn-correlation" class="sidebar-link flex items-center gap-3 w-full px-4 py-2.5 text-xs font-semibold rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/40">
-        <i data-lucide="map" class="w-4 h-4"></i>
-        <span>市況分析</span>
-      </button>
       <button onclick="switchTab('cross')" id="tab-btn-cross" class="sidebar-link flex items-center gap-3 w-full px-4 py-2.5 text-xs font-semibold rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/40">
         <i data-lucide="layout-grid" class="w-4 h-4"></i>
         <span>クロス集計</span>
@@ -71,7 +63,7 @@
     </nav>
 
     <div class="p-4 border-t border-slate-800/60 bg-slate-900/40 flex-shrink-0">
-      <p class="text-[10px] text-slate-500 leading-relaxed">プロセス、売上、市況を分けて確認します。</p>
+      <p class="text-[10px] text-slate-500 leading-relaxed">プロセスの分析とクロス集計を確認します。</p>
     </div>
   </aside>
 
@@ -79,7 +71,7 @@
     <header class="h-12 glass-panel border-b border-slate-800 flex items-center justify-between px-5 z-10 flex-shrink-0">
       <div class="flex items-center gap-3">
         <button id="sidebarToggle" class="p-1.5 rounded-lg bg-slate-800/60 border border-slate-700/50 hover:bg-slate-700/60 text-slate-300 hover:text-white transition flex items-center justify-center cursor-pointer" title="サイドバーの開閉">
-          <i data-lucide="menu" class="w-4 h-4"></i>
+          <i data-lucide="panel-left-close" class="w-4.5 h-4.5"></i>
         </button>
         <div>
           <div class="text-[10px] text-slate-400 font-semibold tracking-wider uppercase">Sales View</div>
@@ -88,7 +80,7 @@
       </div>
     </header>
 
-    <div id="mainScrollArea" class="flex-1 overflow-y-auto overflow-x-hidden w-full px-3 pt-0 pb-3 relative">
+    <div id="mainScrollArea" class="flex-1 overflow-y-auto overflow-x-hidden w-full px-3 pt-4 pb-3 relative">
       <div id="tab-content-overview" class="tab-content">
         <div id="funnel-layer-overall" class="funnel-layer-content hidden">
           <section class="grid grid-cols-1 xl:grid-cols-5 gap-6">
@@ -141,311 +133,51 @@
 
       </div>
 
-      <div id="tab-content-funnel" class="tab-content space-y-4 hidden max-w-6xl mx-auto px-4">
-        <!-- 売上進捗レイヤー切り替えバー -->
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-2xl border border-slate-800/80">
-          <div class="flex flex-wrap items-center gap-4">
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-bold text-slate-400 mr-1">表示範囲:</span>
-              <div class="inline-flex rounded-lg overflow-hidden border border-slate-700/80 text-[11px] font-bold">
-                <button onclick="switchRevenueLayer('overall')" id="revenue-layer-btn-overall" class="px-4 py-1.5 bg-slate-800 text-white border-r border-slate-700/80 transition duration-150">全体</button>
-                <button onclick="switchRevenueLayer('team')" id="revenue-layer-btn-team" class="px-4 py-1.5 bg-slate-950/40 text-slate-400 hover:text-white transition duration-150">チーム別</button>
-              </div>
-            </div>
 
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-bold text-slate-400 mr-1">対象月:</span>
-              <div class="inline-flex rounded-lg overflow-hidden border border-slate-700/80 text-[11px] font-bold">
-                <button onclick="switchRevenueMonth('2026-04')" id="revenue-month-btn-04" class="px-3 py-1.5 bg-slate-950/40 text-slate-400 hover:text-white border-r border-slate-700/80 transition duration-150">4月</button>
-                <button onclick="switchRevenueMonth('2026-05')" id="revenue-month-btn-05" class="px-3 py-1.5 bg-slate-800 text-white border-r border-slate-700/80 transition duration-150">5月 (当月)</button>
-                <button onclick="switchRevenueMonth('2026-06')" id="revenue-month-btn-06" class="px-3 py-1.5 bg-slate-950/40 text-slate-400 hover:text-white transition duration-150">6月 (予測)</button>
-              </div>
-            </div>
-          </div>
-          
-          <div id="revenueTeamSelectContainer" class="hidden flex items-center gap-2">
-            <span class="text-xs font-bold text-slate-400">対象チーム:</span>
-            <select id="revenueTeamSelector" onchange="onRevenueTeamChange()" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1 text-xs font-bold text-white focus:outline-none focus:border-brand-blue">
-              <!-- JSで動的に追加されます -->
-            </select>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5" id="revenueKpiGrid"></div>
-
-        <section class="grid grid-cols-1 xl:grid-cols-5 gap-6">
-          <!-- 左側: 売上進捗積み上げ棒グラフ -->
-          <div class="xl:col-span-3 glass-panel rounded-2xl p-6">
-            <div class="flex items-start justify-between gap-4 mb-6">
-              <div>
-                <h3 class="text-base font-bold text-white">売上進捗</h3>
-                <p class="text-[10px] text-slate-400 mt-0.5">受注日ベースで当月売上の積み上げ推移を確認します。（点線：目標達成ペースライン）</p>
-              </div>
-              <span class="px-2 py-0.5 rounded-full bg-brand-emerald/10 border border-brand-emerald/20 text-brand-emerald text-[9px] font-bold">Revenue</span>
-            </div>
-            <div id="revenueProgressChart" class="h-80"></div>
-          </div>
-
-          <!-- 右側: 平均単価 -->
-          <div class="xl:col-span-2">
-            <div class="glass-panel rounded-2xl p-6 h-full flex flex-col justify-between">
-              <div>
-                <div class="flex items-center justify-between mb-2">
-                  <h3 class="text-base font-bold text-white">平均単価</h3>
-                  <span class="text-[10px] text-slate-400">紹介手数料・決定年収</span>
-                </div>
-                <p class="text-[10px] text-slate-400 mt-1">過去数ヶ月の紹介手数料および決定年収の推移を確認します。</p>
-              </div>
-              <div id="unitPriceMiniChart" class="h-72 mt-4"></div>
-            </div>
-          </div>
-        </section>
-
-        <!-- 新設：比較マトリクス ＆ 予測シミュレーターの横並びグリッド -->
-        <div class="grid grid-cols-1 xl:grid-cols-5 gap-6">
-          <!-- 左側 (Col-span-3): 売上詳細比較マトリクス -->
-          <section class="xl:col-span-3 glass-panel rounded-2xl p-5 flex flex-col justify-between">
-            <div>
-              <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-3 mb-4">
-                <div>
-                  <h3 class="text-base font-bold text-white">売上詳細比較マトリクス</h3>
-                  <p class="text-[10px] text-slate-400 mt-0.5">組織・個人・エリアの売上KPIと予測値を一覧比較します。</p>
-                </div>
-                <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                  <div class="inline-flex rounded-md overflow-hidden border border-slate-700/80 text-[10px] font-bold">
-                    <button onclick="switchRevenueMode('team')" id="rev-mode-team" class="rev-mode-btn px-3 py-1 bg-slate-800 text-white border-r border-slate-700/80 transition">チーム</button>
-                    <button onclick="switchRevenueMode('member')" id="rev-mode-member" class="rev-mode-btn px-3 py-1 bg-slate-950/40 text-slate-400 hover:text-white hover:bg-slate-800/70 border-r border-slate-700/80 transition">個人</button>
-                    <button onclick="switchRevenueMode('area')" id="rev-mode-area" class="rev-mode-btn px-3 py-1 bg-slate-950/40 text-slate-400 hover:text-white hover:bg-slate-800/70 transition">エリア</button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- フィルターとトグルチップの表示エリア -->
-              <div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-3 min-w-0">
-                <button onclick="resetRevenueFilter()" class="px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700/70 text-[9px] font-bold text-slate-300 hover:text-white hover:border-brand-blue/35 transition flex-shrink-0">
-                  全表示リセット
-                </button>
-                <div id="revenueComparisonVisibilityControls" class="flex flex-wrap justify-start gap-1.5 overflow-x-auto py-0.5"></div>
-              </div>
-
-              <!-- マトリクス テーブル本体 -->
-              <div class="overflow-x-auto w-full border border-slate-800/80 rounded-xl bg-slate-950/20">
-                <table class="w-full text-[10px] border-collapse" id="revenueComparisonTable">
-                  <thead>
-                    <tr class="bg-slate-900/60 border-b border-slate-800/80 text-slate-400 font-bold">
-                      <th class="p-2.5 text-left min-w-[100px] font-bold text-slate-300">対象</th>
-                      <th class="p-2.5 text-right cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('target')">目標 <span id="sort-icon-target"></span></th>
-                      <th class="p-2.5 text-right cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('actual')">確定 <span id="sort-icon-actual"></span></th>
-                      <th class="p-2.5 text-center cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('pct')">達成率 <span id="sort-icon-pct"></span></th>
-                      <th class="p-2.5 text-right cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('pipeline')">見込 <span id="sort-icon-pipeline"></span></th>
-                      <th class="p-2.5 text-right cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('forecast')">着地予測 <span id="sort-icon-forecast"></span></th>
-                      <th class="p-2.5 text-center cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('forecastPct')">予測比 <span id="sort-icon-forecastPct"></span></th>
-                      <th class="p-2.5 text-center cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('placements')">決定数 <span id="sort-icon-placements"></span></th>
-                      <th class="p-2.5 text-right cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('avgComm')">単価 <span id="sort-icon-avgComm"></span></th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-slate-800/40 text-slate-300" id="revenueComparisonBody">
-                    <!-- JSで動的描画 -->
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </section>
-
-          <!-- 右側 (Col-span-2): 着地予測シミュレーター -->
-          <section class="xl:col-span-2 glass-panel rounded-2xl p-5 flex flex-col justify-between">
-            <div>
-              <div class="flex items-start justify-between gap-4 mb-4">
-                <div>
-                  <h3 class="text-base font-bold text-white">着地予測シミュレーター</h3>
-                  <p class="text-[10px] text-slate-400 mt-0.5">プロセス品質を引き上げた場合の見込・着地予測の変化を擬似シミュレーションします。</p>
-                </div>
-                <span class="px-2 py-0.5 rounded-full bg-brand-cyan/10 border border-brand-cyan/20 text-brand-cyan text-[9px] font-bold">Simulator</span>
-              </div>
-
-              <!-- 確度重み付け設定 (Feature 11) -->
-              <div class="mb-4 bg-slate-950/30 p-2.5 rounded-xl border border-slate-800/80 flex items-center justify-between text-[10px] font-bold">
-                <span class="text-slate-400">見込（パイプライン）計算方式:</span>
-                <div class="inline-flex rounded overflow-hidden border border-slate-700/50">
-                  <button onclick="toggleWeightedPipeline(false)" id="pipeline-weight-std" class="px-2.5 py-1 bg-slate-800 text-white border-r border-slate-700/50 hover:text-white transition">一律100%</button>
-                  <button onclick="toggleWeightedPipeline(true)" id="pipeline-weight-wtd" class="px-2.5 py-1 bg-slate-950/40 text-slate-400 hover:text-white transition">確度重み付け</button>
-                </div>
-              </div>
-
-              <!-- スライダー群 -->
-              <div class="space-y-4 mt-2">
-                <div>
-                  <div class="flex justify-between items-center text-[10.5px] mb-1.5">
-                    <span class="text-slate-300 font-medium">① 架電接続率 (Connection Rate)</span>
-                    <span class="text-brand-cyan font-bold" id="sim-slider-connection-lbl">34% <span class="text-[9px] text-slate-500 font-normal">(基準 34%)</span></span>
-                  </div>
-                  <input type="range" min="10" max="80" value="34" id="sim-slider-connection" oninput="onSimulationSliderChange()" class="w-full accent-brand-cyan bg-slate-800 rounded-lg appearance-none h-1.5">
-                </div>
-
-                <div>
-                  <div class="flex justify-between items-center text-[10.5px] mb-1.5">
-                    <span class="text-slate-300 font-medium">② 推薦承諾率 (Consent Rate)</span>
-                    <span class="text-brand-cyan font-bold" id="sim-slider-consent-lbl">56% <span class="text-[9px] text-slate-500 font-normal">(基準 56%)</span></span>
-                  </div>
-                  <input type="range" min="10" max="100" value="56" id="sim-slider-consent" oninput="onSimulationSliderChange()" class="w-full accent-brand-cyan bg-slate-800 rounded-lg appearance-none h-1.5">
-                </div>
-
-                <div>
-                  <div class="flex justify-between items-center text-[10.5px] mb-1.5">
-                    <span class="text-slate-300 font-medium">③ 内定承諾率 (Close Rate)</span>
-                    <span class="text-brand-cyan font-bold" id="sim-slider-close-lbl">40% <span class="text-[9px] text-slate-500 font-normal">(基準 40%)</span></span>
-                  </div>
-                  <input type="range" min="10" max="90" value="40" id="sim-slider-close" oninput="onSimulationSliderChange()" class="w-full accent-brand-cyan bg-slate-800 rounded-lg appearance-none h-1.5">
-                </div>
-              </div>
-            </div>
-
-            <!-- シミュレーション結果表示 -->
-            <div class="mt-5 p-4 rounded-xl border border-slate-800 bg-slate-950/40">
-              <div class="flex justify-between items-start mb-2">
-                <span class="text-[9.5px] text-slate-400 font-bold uppercase tracking-wider">シミュレーション着地売上</span>
-                <span id="sim-status-badge" class="px-2 py-0.5 rounded border border-slate-700/60 bg-slate-800/80 text-[8.5px] font-bold text-slate-400 transition-colors">基準値と同じ</span>
-              </div>
-              <div class="flex items-baseline justify-between">
-                <strong class="text-2xl font-extrabold text-white tracking-tight" id="sim-result-landing-val">2,375万円</strong>
-                <span class="text-xs font-bold text-slate-400" id="sim-result-diff-val">基準比 ±0万円 (±0%)</span>
-              </div>
-              <p class="text-[9px] text-slate-500 leading-relaxed mt-2.5 pt-2 border-t border-slate-800/50" id="sim-coaching-tip">
-                接続率や承諾率を高めると、見込案件（書類回収済み）の売上価値および着地予測額が連動して倍率算出され、マトリクスに即座に反映されます。
-              </p>
-            </div>
-          </section>
-        </div>
-      </div>
-
-      <div id="tab-content-correlation" class="tab-content space-y-4 hidden">
-        <section class="grid grid-cols-1 xl:grid-cols-5 gap-6">
-          <div class="xl:col-span-3 glass-panel rounded-2xl p-6">
-            <div class="flex items-start justify-between gap-4 mb-6">
-              <div>
-                <h3 class="text-base font-bold text-white">市況ヒートマップ</h3>
-                <p class="text-[10px] text-slate-400 mt-0.5">エリア×カテゴリの求人倍率から、売り手/買い手の偏りを確認します。</p>
-              </div>
-              <span class="px-2 py-0.5 rounded-full bg-brand-cyan/10 border border-brand-cyan/20 text-brand-cyan text-[9px] font-bold">Market</span>
-            </div>
-            <div id="marketHeatmapMiniChart" class="h-96"></div>
-          </div>
-
-          <div class="xl:col-span-2 space-y-4">
-            <div class="glass-panel rounded-2xl p-6">
-              <h3 class="text-base font-bold text-white mb-1">市況サマリー</h3>
-              <p class="text-[10px] text-slate-400 mb-5">求人倍率の高い順に注力領域を表示します。</p>
-              <div id="marketSummaryList" class="space-y-3"></div>
-            </div>
-            <div class="glass-panel rounded-2xl p-6">
-              <h3 class="text-base font-bold text-white mb-1">正社員区分別成約シェア</h3>
-              <p class="text-[10px] text-slate-400 mb-5">市況と売上構成のズレを確認します。</p>
-              <div id="contractShareList" class="space-y-3"></div>
-            </div>
-            <div class="glass-panel rounded-2xl p-6">
-              <h3 class="text-base font-bold text-white mb-1">失注・辞退理由</h3>
-              <p class="text-[10px] text-slate-400 mb-5">売上未達の直接要因（件数）</p>
-              <div id="lossReasonList" class="space-y-3"></div>
-            </div>
-            <div class="glass-panel rounded-2xl p-6">
-              <h3 class="text-base font-bold text-white mb-1">求職者属性別売上構成比</h3>
-              <p class="text-[10px] text-slate-400 mb-5">当月成約実績の内訳（職種別・契約区分別）</p>
-              <div id="salesBreakdownContainer" class="space-y-3.5">
-                <!-- JSで進行状況バーリストまたはミニグラフを動的描画 -->
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <div id="tab-content-cross" class="tab-content space-y-5 hidden max-w-6xl mx-auto px-4 mt-4">
-        <!-- クロス集計用コントロールパネル -->
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800/80">
-          <div class="flex flex-wrap items-center gap-4">
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-bold text-slate-400">行軸 (Row):</span>
-              <select id="crossRowSelector" onchange="onCrossAxisChange()" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-brand-blue">
-                <option value="area" selected>エリア (地域)</option>
-                <option value="ageGroup">年齢グループ</option>
-                <option value="jobType">求人職種</option>
-                <option value="contractType">契約区分</option>
-              </select>
-            </div>
-
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-bold text-slate-400">列軸 (Col):</span>
-              <select id="crossColSelector" onchange="onCrossAxisChange()" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-brand-blue">
-                <option value="area">エリア (地域)</option>
-                <option value="ageGroup" selected>年齢グループ</option>
-                <option value="jobType">求人職種</option>
-                <option value="contractType">契約区分</option>
-              </select>
-            </div>
-
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-bold text-slate-400">集計指標 (Metric):</span>
-              <select id="crossMetricSelector" onchange="onCrossAxisChange()" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-brand-blue">
-                <optgroup label="移行・決定率 (割合)">
-                  <option value="rate_overall" selected>登録 → 決定率 (全体移行率)</option>
-                  <option value="rate_interview_rec">面談 → 推薦移行率</option>
-                  <option value="rate_rec_setup">推薦 → 面接設定率</option>
-                  <option value="rate_setup_placement">面接 → 決定率</option>
-                </optgroup>
-                <optgroup label="プロセス実績値 (件数)">
-                  <option value="registrations">1. 登録数</option>
-                  <option value="bookings">2. 面談設定数</option>
-                  <option value="interviews">3. 面談実施数</option>
-                  <option value="proposals">4. 求人提案数</option>
-                  <option value="recommendations">5. 推薦数</option>
-                  <option value="setups">6. 面接数</option>
-                  <option value="placements">7. 決定数</option>
-                </optgroup>
-              </select>
-            </div>
-          </div>
-          <div class="text-[10px] text-slate-400 font-semibold bg-slate-950/40 border border-slate-800 rounded-lg px-3 py-1.5">
-            全登録データ (700件) からリアルタイムクロス集計
-          </div>
-        </div>
-
+      <div id="tab-content-cross" class="tab-content hidden w-full">
         <!-- メインマトリクス & 選択セグメント詳細のグリッド -->
-        <div class="grid grid-cols-1 xl:grid-cols-5 gap-6">
-          <!-- 左側 (Col-span-3): クロスマトリクス -->
-          <div class="xl:col-span-3 glass-panel rounded-2xl p-6">
-            <div class="flex items-start justify-between gap-4 mb-5">
-              <div>
-                <h3 class="text-base font-bold text-white">プロセスクロス分析マトリクス</h3>
-                <p class="text-[10px] text-slate-400 mt-0.5">セルをクリックすると、該当セグメントの詳細なプロセス移行が右側に表示されます。</p>
+        <div class="grid grid-cols-1 xl:grid-cols-5 gap-4 items-start">
+          <!-- 左側 (Col-span-3): 軸設定 & 複数指標テーブル群 -->
+          <div id="crossLeftPane" class="xl:col-span-3 space-y-3">
+            <!-- クロス集計 ヘッダー (軸設定) -->
+            <div class="glass-panel glass-panel-static rounded-xl p-3 border border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div class="flex items-center gap-3 text-xs font-bold text-white">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">横軸（行）：</span>
+                  <select id="crossRowSelector" onchange="onCrossAxisChange()" class="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs font-extrabold text-white focus:outline-none focus:border-brand-blue cursor-pointer">
+                    <option value="area" selected>エリア (地域)</option>
+                    <option value="ageGroup">年齢グループ</option>
+                    <option value="jobType">求人職種</option>
+                    <option value="contractType">契約区分</option>
+                  </select>
+                </div>
+                
+                <span class="text-slate-500 font-medium">×</span>
+                
+                <div class="flex items-center gap-1.5">
+                  <span class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">縦軸（列）：</span>
+                  <select id="crossColSelector" onchange="onCrossAxisChange()" class="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs font-extrabold text-white focus:outline-none focus:border-brand-blue cursor-pointer">
+                    <option value="area">エリア (地域)</option>
+                    <option value="ageGroup" selected>年齢グループ</option>
+                    <option value="jobType">求人職種</option>
+                    <option value="contractType">契約区分</option>
+                  </select>
+                </div>
               </div>
-              <span class="px-2 py-0.5 rounded-full bg-brand-cyan/10 border border-brand-cyan/20 text-brand-cyan text-[9px] font-bold">Cross Matrix</span>
-            </div>
-            
-            <div class="overflow-x-auto w-full border border-slate-800/80 rounded-xl bg-slate-950/20">
-              <table class="w-full text-xs border-collapse" id="crossMatrixTable">
-                <!-- JSで動的描画 -->
-              </table>
             </div>
 
-            <!-- ヒートマップ凡例 -->
-            <div class="flex items-center gap-3 mt-4 text-[10px] text-slate-400 justify-end">
-              <span>凡例: </span>
-              <div class="flex items-center gap-1">
-                <span class="w-3 h-3 bg-brand-blue/10 border border-brand-blue/20 rounded"></span>
-                <span>低</span>
-              </div>
-              <div class="flex items-center gap-1">
-                <span class="w-3 h-3 bg-brand-blue/40 border border-brand-blue/50 rounded"></span>
-                <span>中</span>
-              </div>
-              <div class="flex items-center gap-1">
-                <span class="w-3 h-3 bg-brand-blue/80 border border-brand-blue/90 rounded"></span>
-                <span>高</span>
-              </div>
-            </div>
+            <!-- 複数テーブルがここに描画される -->
+            <div id="crossTablesContainer" class="space-y-3"></div>
+
+            <!-- 新規テーブル追加用の破線ボタン -->
+            <button onclick="addCrossTable()" class="w-full py-2.5 border border-dashed border-slate-800 hover:border-brand-blue/50 rounded-xl bg-slate-950/20 hover:bg-slate-950/45 text-slate-400 hover:text-white text-xs font-bold transition flex items-center justify-center gap-2 group cursor-pointer">
+              <i data-lucide="plus" class="w-4 h-4 text-slate-500 group-hover:text-brand-cyan transition-transform group-hover:rotate-90"></i>
+              <span>集計テーブルを追加する</span>
+            </button>
           </div>
 
           <!-- 右側 (Col-span-2): セグメント詳細 -->
-          <div class="xl:col-span-2 glass-panel rounded-2xl p-6 flex flex-col justify-between" id="crossSegmentDetailContainer">
+          <div class="xl:col-span-2 glass-panel rounded-2xl p-6 self-stretch" id="crossSegmentDetailContainer">
             <!-- JSで動的描画 -->
           </div>
         </div>

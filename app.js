@@ -42,11 +42,10 @@ const state = {
     prep: 57,
     close: 40
   },
-  // クロス集計用の状態
   crossTab: {
     rowAxis: 'area',
     colAxis: 'ageGroup',
-    metric: 'rate_overall',
+    metrics: ['rate_overall'],
     selectedRow: '関東',
     selectedCol: '30代'
   }
@@ -250,7 +249,7 @@ window.switchTab = function(tabId) {
   state.currentTab = tabId;
 
   // ナビゲーションボタンのアクティブクラス制御
-  const tabs = ['overview', 'funnel', 'correlation', 'cross'];
+  const tabs = ['overview', 'cross'];
   tabs.forEach(t => {
     const btn = document.getElementById(`tab-btn-${t}`);
     const content = document.getElementById(`tab-content-${t}`);
@@ -299,8 +298,6 @@ function updatePageContext() {
   const selectedTeam = getSelectedTeamText();
   const titles = {
     overview: 'ファネル分析',
-    funnel: '売上進捗',
-    correlation: '市況分析',
     cross: 'プロセスクロス集計分析'
   };
 
@@ -534,8 +531,6 @@ function simulateDataRefresh() {
 
 function renderAll() {
   renderLayerFunnels();
-  renderRevenueProgress();
-  renderMarketOverview();
   setFunnelLayer(state.selectedFunnelLayer);
   if (state.currentTab === 'cross') {
     renderCrossTabulation();
@@ -1717,7 +1712,7 @@ function toggleProcessActions(panelId, trigger) {
 window.toggleProcessActions = toggleProcessActions;
 
 window.toggleComparisonStageActions = function(stageKey, trigger) {
-  const matrix = document.getElementById('teamFunnelComparisonMatrix');
+  const matrix = trigger ? trigger.closest('.inline-grid') : document.getElementById('teamFunnelComparisonMatrix');
   if (!matrix) return;
 
   const panels = [...matrix.querySelectorAll(`.process-action-panel[id$="-${stageKey}-actions"]`)];
@@ -1729,7 +1724,8 @@ window.toggleComparisonStageActions = function(stageKey, trigger) {
     panel.classList.toggle('process-action-panel-open', shouldOpen);
   });
 
-  const labelChevron = trigger?.querySelector('.comparison-stage-chevron')
+  const labelChevron = trigger?.querySelector('.process-action-chevron')
+    || trigger?.querySelector('.comparison-stage-chevron')
     || matrix.querySelector(`.comparison-stage-chevron[data-stage-key="${stageKey}"]`);
   if (labelChevron) {
     labelChevron.classList.toggle('rotate-180', shouldOpen);
@@ -4074,7 +4070,7 @@ window.selectMemberAndScroll = function(memberId) {
   if (selector) {
     selector.value = memberId;
     selector.dispatchEvent(new Event('change'));
-    switchTab('correlation');
+    switchTab('overview');
 
     const scrollArea = document.getElementById('mainScrollArea') || document.querySelector('main');
     scrollArea.scrollTo({
@@ -4907,9 +4903,8 @@ window.saveAreaDefinitions = function() {
   // グローバルなエリアデータをリビルドし、市場タブを再描画
   renderAll();
   
-  // 保存完了に伴い、市場タブに遷移して効果を確認しやすくする
-  switchTab('market');
-  switchMarketSubTab('area'); // エリア別サブタブを表示
+  // 保存完了に伴い、デフォルトのファネル分析タブに遷移して効果を確認しやすくする
+  switchTab('overview');
 };
 
 // デフォルト設定へのリセット
@@ -4996,12 +4991,10 @@ window.toggleWeightedPipeline = function(isWeighted) {
 window.onCrossAxisChange = function() {
   const rowSelector = document.getElementById('crossRowSelector');
   const colSelector = document.getElementById('crossColSelector');
-  const metricSelector = document.getElementById('crossMetricSelector');
   
-  if (rowSelector && colSelector && metricSelector) {
+  if (rowSelector && colSelector) {
     state.crossTab.rowAxis = rowSelector.value;
     state.crossTab.colAxis = colSelector.value;
-    state.crossTab.metric = metricSelector.value;
     
     // 選択値のリセット
     state.crossTab.selectedRow = null;
@@ -5009,6 +5002,29 @@ window.onCrossAxisChange = function() {
     
     renderCrossTabulation();
   }
+};
+
+window.addCrossTable = function() {
+  const allMetrics = [
+    'rate_overall', 'rate_interview_rec', 'rate_rec_setup', 'rate_setup_placement',
+    'registrations', 'bookings', 'interviews', 'proposals', 'recommendations', 'setups', 'placements'
+  ];
+  // Find a metric that is not currently added, or default to registrations
+  const nextMetric = allMetrics.find(m => !state.crossTab.metrics.includes(m)) || 'registrations';
+  state.crossTab.metrics.push(nextMetric);
+  renderCrossTabulation();
+};
+
+window.removeCrossTable = function(index) {
+  if (state.crossTab.metrics.length > 1) {
+    state.crossTab.metrics.splice(index, 1);
+    renderCrossTabulation();
+  }
+};
+
+window.updateCrossTableMetric = function(index, newMetric) {
+  state.crossTab.metrics[index] = newMetric;
+  renderCrossTabulation();
 };
 
 function getAxisLabel(axisKey) {
@@ -5080,30 +5096,29 @@ window.selectCrossCell = function(rowVal, colVal) {
 };
 
 function renderCrossTabulation() {
-  const matrixTable = document.getElementById('crossMatrixTable');
-  if (!matrixTable) return;
+  const container = document.getElementById('crossTablesContainer');
+  if (!container) return;
   
-  const { rowAxis, colAxis, metric } = state.crossTab;
+  const { rowAxis, colAxis, metrics } = state.crossTab;
   
   if (rowAxis === colAxis) {
-    matrixTable.innerHTML = `
-      <tbody>
-        <tr>
-          <td class="p-8 text-center text-slate-400 font-bold">
-            <div class="flex flex-col items-center gap-2">
-              <i data-lucide="alert-triangle" class="w-8 h-8 text-brand-amber"></i>
-              <span>行軸と列軸に同じ項目は設定できません。<br>異なる軸を選択してください。</span>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    `;
-    lucide.createIcons();
-    document.getElementById('crossSegmentDetailContainer').innerHTML = `
-      <div class="min-h-40 flex items-center justify-center text-slate-500 text-xs">
-        軸を選択し直してください。
+    container.innerHTML = `
+      <div class="glass-panel rounded-2xl p-8 text-center text-slate-400 font-bold border border-slate-800/80">
+        <div class="flex flex-col items-center gap-2">
+          <i data-lucide="alert-triangle" class="w-8 h-8 text-brand-amber"></i>
+          <span>行軸と列軸に同じ項目は設定できません。<br>異なる軸を選択してください。</span>
+        </div>
       </div>
     `;
+    lucide.createIcons();
+    const detailContainer = document.getElementById('crossSegmentDetailContainer');
+    if (detailContainer) {
+      detailContainer.innerHTML = `
+        <div class="min-h-40 flex items-center justify-center text-slate-500 text-xs">
+          軸を選択し直してください。
+        </div>
+      `;
+    }
     return;
   }
   
@@ -5119,114 +5134,162 @@ function renderCrossTabulation() {
     state.crossTab.selectedCol = colVals[0];
   }
   
-  // 行と列の組み合わせデータ計算
-  const gridData = {};
-  let minVal = Infinity;
-  let maxVal = -Infinity;
+  let htmlContent = '';
   
-  rowVals.forEach(row => {
-    gridData[row] = {};
-    colVals.forEach(col => {
-      const subset = candidates.filter(c => c[rowAxis] === row && c[colAxis] === col);
-      const metrics = getFunnelMetricsForCandidates(subset);
-      const val = getMetricValue(metrics, metric);
-      gridData[row][col] = { val, metrics };
-      
-      if (val < minVal) minVal = val;
-      if (val > maxVal) maxVal = val;
+  metrics.forEach((metric, index) => {
+    // 行と列の組み合わせデータ計算
+    const gridData = {};
+    let minVal = Infinity;
+    let maxVal = -Infinity;
+    
+    rowVals.forEach(row => {
+      gridData[row] = {};
+      colVals.forEach(col => {
+        const subset = candidates.filter(c => c[rowAxis] === row && c[colAxis] === col);
+        const cellMetrics = getFunnelMetricsForCandidates(subset);
+        const val = getMetricValue(cellMetrics, metric);
+        gridData[row][col] = { val, cellMetrics };
+        
+        if (val < minVal) minVal = val;
+        if (val > maxVal) maxVal = val;
+      });
     });
-  });
-  
-  // 各行・各列・全体のトータル計算
-  const rowTotals = {};
-  rowVals.forEach(row => {
-    const subset = candidates.filter(c => c[rowAxis] === row);
-    const metrics = getFunnelMetricsForCandidates(subset);
-    rowTotals[row] = getMetricValue(metrics, metric);
-  });
-  
-  const colTotals = {};
-  colVals.forEach(col => {
-    const subset = candidates.filter(c => c[colAxis] === col);
-    const metrics = getFunnelMetricsForCandidates(subset);
-    colTotals[col] = getMetricValue(metrics, metric);
-  });
-  
-  const overallMetrics = getFunnelMetricsForCandidates(candidates);
-  const grandTotal = getMetricValue(overallMetrics, metric);
-  
-  // テーブルHTML生成
-  let tableHtml = `
-    <thead>
-      <tr class="bg-slate-900/60 text-slate-400 font-bold border-b border-slate-800/80">
-        <th class="p-3 text-left border-r border-slate-800/50">${getAxisLabel(rowAxis)} \\ ${getAxisLabel(colAxis)}</th>
-  `;
-  
-  colVals.forEach(col => {
-    tableHtml += `<th class="p-3 text-center min-w-[90px] font-bold text-slate-300">${col}</th>`;
-  });
-  tableHtml += `<th class="p-3 text-center border-l border-slate-800/50 font-extrabold text-white bg-slate-900/40">全体</th></tr></thead>`;
-  
-  tableHtml += '<tbody class="divide-y divide-slate-800/40 text-slate-300">';
-  
-  rowVals.forEach(row => {
-    tableHtml += `
-      <tr class="hover:bg-slate-900/20 transition-colors">
-        <td class="p-3 font-bold text-left border-r border-slate-800/50 text-slate-200 bg-slate-900/10">${row}</td>
+    
+    // 各行・各列・全体のトータル計算
+    const rowTotals = {};
+    rowVals.forEach(row => {
+      const subset = candidates.filter(c => c[rowAxis] === row);
+      const cellMetrics = getFunnelMetricsForCandidates(subset);
+      rowTotals[row] = getMetricValue(cellMetrics, metric);
+    });
+    
+    const colTotals = {};
+    colVals.forEach(col => {
+      const subset = candidates.filter(c => c[colAxis] === col);
+      const cellMetrics = getFunnelMetricsForCandidates(subset);
+      colTotals[col] = getMetricValue(cellMetrics, metric);
+    });
+    
+    const overallMetrics = getFunnelMetricsForCandidates(candidates);
+    const grandTotal = getMetricValue(overallMetrics, metric);
+    
+    // 削除ボタンHTML
+    const deleteBtnHtml = metrics.length > 1 
+      ? `<button onclick="removeCrossTable(${index})" class="p-1.5 rounded-lg hover:bg-rose-500/10 text-slate-500 hover:text-rose-400 transition" title="このテーブルを削除">
+           <i data-lucide="trash-2" class="w-4 h-4"></i>
+         </button>` 
+      : '';
+      
+    // メトリック選択HTML
+    const metricSelectHtml = `
+      <select onchange="updateCrossTableMetric(${index}, this.value)" class="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-brand-blue cursor-pointer">
+        <optgroup label="移行・決定率 (割合)">
+          <option value="rate_overall" ${metric === 'rate_overall' ? 'selected' : ''}>登録 → 決定率 (全体移行率)</option>
+          <option value="rate_interview_rec" ${metric === 'rate_interview_rec' ? 'selected' : ''}>面談 → 推薦移行率</option>
+          <option value="rate_rec_setup" ${metric === 'rate_rec_setup' ? 'selected' : ''}>推薦 → 面接設定率</option>
+          <option value="rate_setup_placement" ${metric === 'rate_setup_placement' ? 'selected' : ''}>面接 → 決定率</option>
+        </optgroup>
+        <optgroup label="プロセス実績値 (件数)">
+          <option value="registrations" ${metric === 'registrations' ? 'selected' : ''}>1. 登録数</option>
+          <option value="bookings" ${metric === 'bookings' ? 'selected' : ''}>2. 面談設定数</option>
+          <option value="interviews" ${metric === 'interviews' ? 'selected' : ''}>3. 面談実施数</option>
+          <option value="proposals" ${metric === 'proposals' ? 'selected' : ''}>4. 求人提案数</option>
+          <option value="recommendations" ${metric === 'recommendations' ? 'selected' : ''}>5. 推薦数</option>
+          <option value="setups" ${metric === 'setups' ? 'selected' : ''}>6. 面接数</option>
+          <option value="placements" ${metric === 'placements' ? 'selected' : ''}>7. 決定数</option>
+        </optgroup>
+      </select>
+    `;
+    
+    // テーブルHTML生成
+    let tableHtml = `
+      <div class="glass-panel glass-panel-static rounded-xl p-3.5 border border-slate-800/80 space-y-2.5">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-800/40">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold text-slate-400">集計指標:</span>
+            ${metricSelectHtml}
+          </div>
+          ${deleteBtnHtml}
+        </div>
+        
+        <div class="overflow-x-auto w-full border border-slate-800/80 rounded-lg bg-slate-950/20">
+          <table class="w-full text-xs border-collapse">
+            <thead>
+              <tr class="bg-slate-900/60 text-slate-400 font-bold border-b border-slate-800/80">
+                <th class="py-2 px-2.5 text-left border-r border-slate-800/50">${getAxisLabel(rowAxis)} \\ ${getAxisLabel(colAxis)}</th>
     `;
     
     colVals.forEach(col => {
-      const cell = gridData[row][col];
-      const isSelected = state.crossTab.selectedRow === row && state.crossTab.selectedCol === col;
-      
-      // ヒートマップの不透明度算出 (0.05〜0.75)
-      let opacity = 0.05;
-      if (maxVal > minVal) {
-        opacity = 0.05 + 0.70 * ((cell.val - minVal) / (maxVal - minVal));
-      }
-      
-      const heatBg = `rgba(59, 130, 246, ${opacity})`; // brand-blue をベースにした熱感
-      const borderStyle = isSelected ? 'border: 2px solid #06b6d4; box-shadow: inset 0 0 8px rgba(6, 182, 212, 0.4);' : '';
-      
+      tableHtml += `<th class="py-2 px-1.5 text-center min-w-[75px] font-bold text-slate-300">${col}</th>`;
+    });
+    tableHtml += `<th class="py-2 px-1.5 text-center border-l border-slate-800/50 font-extrabold text-white bg-slate-900/40">全体</th></tr></thead>`;
+    
+    tableHtml += '<tbody class="divide-y divide-slate-800/40 text-slate-300">';
+    
+    rowVals.forEach(row => {
       tableHtml += `
-        <td onclick="selectCrossCell('${row}', '${col}')" 
-            class="p-3 text-center cursor-pointer font-semibold transition-all relative ${isSelected ? 'z-10' : ''}" 
-            style="background-color: ${heatBg}; ${borderStyle}"
-            title="${row} × ${col} の詳細表示">
-          ${formatMetricValue(cell.val, metric)}
+        <tr class="transition-colors">
+          <td class="py-2 px-2.5 font-bold text-left border-r border-slate-800/50 text-slate-200 bg-slate-900/10">${row}</td>
+      `;
+      
+      colVals.forEach(col => {
+        const cell = gridData[row][col];
+        const isSelected = state.crossTab.selectedRow === row && state.crossTab.selectedCol === col;
+        
+        // ヒートマップの不透明度算出 (0.05〜0.75)
+        let opacity = 0.05;
+        if (maxVal > minVal) {
+          opacity = 0.05 + 0.70 * ((cell.val - minVal) / (maxVal - minVal));
+        }
+        
+        const heatBg = `rgba(59, 130, 246, ${opacity})`; // brand-blue をベースにした熱感
+        const borderStyle = isSelected ? 'border: 2px solid #06b6d4; box-shadow: inset 0 0 8px rgba(6, 182, 212, 0.4);' : '';
+        
+        tableHtml += `
+          <td onclick="selectCrossCell('${row}', '${col}')" 
+              class="py-2 px-1.5 text-center cursor-pointer font-semibold transition-all relative ${isSelected ? 'z-10' : ''}" 
+              style="background-color: ${heatBg}; ${borderStyle}"
+              title="${row} × ${col} の詳細表示">
+            ${formatMetricValue(cell.val, metric)}
+          </td>
+        `;
+      });
+      
+      // 行全体
+      tableHtml += `
+        <td class="py-2 px-1.5 text-center border-l border-slate-800/50 font-extrabold text-slate-200 bg-slate-900/30">
+          ${formatMetricValue(rowTotals[row], metric)}
+        </td>
+      </tr>`;
+    });
+    
+    // 列全体（フッター行）
+    tableHtml += `
+      <tr class="bg-slate-900/40 border-t border-slate-800/80 font-bold">
+        <td class="py-2 px-2.5 border-r border-slate-800/50 font-extrabold text-slate-300">全体</td>
+    `;
+    colVals.forEach(col => {
+      tableHtml += `
+        <td class="py-2 px-1.5 text-center font-extrabold text-slate-200">
+          ${formatMetricValue(colTotals[col], metric)}
         </td>
       `;
     });
-    
-    // 行全体
     tableHtml += `
-      <td class="p-3 text-center border-l border-slate-800/50 font-extrabold text-slate-200 bg-slate-900/30">
-        ${formatMetricValue(rowTotals[row], metric)}
-      </td>
-    </tr>`;
-  });
-  
-  // 列全体（フッター行）
-  tableHtml += `
-    <tr class="bg-slate-900/40 border-t border-slate-800/80 font-bold">
-      <td class="p-3 border-r border-slate-800/50 font-extrabold text-slate-300">全体</td>
-  `;
-  colVals.forEach(col => {
-    tableHtml += `
-      <td class="p-3 text-center font-extrabold text-slate-200">
-        ${formatMetricValue(colTotals[col], metric)}
-      </td>
+        <td class="py-2 px-1.5 text-center border-l border-slate-800/50 font-black text-brand-cyan bg-slate-900/60">
+          ${formatMetricValue(grandTotal, metric)}
+        </td>
+      </tr>
+    </tbody>
+    </table>
+    </div>
+    </div>
     `;
+    
+    htmlContent += tableHtml;
   });
-  tableHtml += `
-      <td class="p-3 text-center border-l border-slate-800/50 font-black text-brand-cyan bg-slate-900/60">
-        ${formatMetricValue(grandTotal, metric)}
-      </td>
-    </tr>
-  </tbody>
-  `;
   
-  matrixTable.innerHTML = tableHtml;
+  container.innerHTML = htmlContent;
   
   // 右側のセグメント詳細パネルの描画
   renderSegmentDetail(state.crossTab.selectedRow, state.crossTab.selectedCol, rowAxis, colAxis);
@@ -5285,96 +5348,214 @@ function renderSegmentDetail(rowVal, colVal, rowAxis, colAxis) {
   const candidates = dashboardData.candidates || [];
   const subset = candidates.filter(c => c[rowAxis] === rowVal && c[colAxis] === colVal);
   const metrics = getFunnelMetricsForCandidates(subset);
-  const conversionRate = metrics.registrations > 0 ? (metrics.placements / metrics.registrations) * 100 : 0;
   
-  const insights = getSegmentInsights(rowVal, colVal, metrics);
-  
-  const stageData = [
-    { name: '登録', val: metrics.registrations, key: 'registrations', color: 'bg-slate-500' },
-    { name: '面談設定', val: metrics.bookings, key: 'bookings', color: 'bg-blue-500' },
-    { name: '面談実施', val: metrics.interviews, key: 'interviews', color: 'bg-cyan-500' },
-    { name: '求人提案', val: metrics.proposals, key: 'proposals', color: 'bg-purple-500' },
-    { name: '推薦', val: metrics.recommendations, key: 'recommendations', color: 'bg-pink-500' },
-    { name: '面接', val: metrics.setups, key: 'setups', color: 'bg-amber-500' },
-    { name: '決定', val: metrics.placements, key: 'placements', color: 'bg-emerald-500' }
-  ];
-  
-  let html = `
-    <div class="space-y-4">
-      <div class="flex items-center justify-between pb-3 border-b border-slate-800/80">
-        <div>
-          <h4 class="text-sm font-extrabold text-white flex items-center gap-1.5">
-            <i data-lucide="user-check" class="w-4 h-4 text-brand-cyan"></i>
-            <span>${rowVal} × ${colVal}</span>
-          </h4>
-          <p class="text-[9px] text-slate-400 mt-0.5">選択したセグメントのプロセス品質</p>
-        </div>
-        <span class="px-2 py-0.5 rounded bg-brand-blue/10 border border-brand-blue/20 text-brand-cyan text-[10px] font-black">
-          決定率: ${conversionRate.toFixed(1)}%
-        </span>
-      </div>
+  // Calculate scaled target funnel data
+  const overallFunnel = aggregateFunnelData();
+  const factor = metrics.registrations / (overallFunnel.registrations.actual || 1);
+  const segmentFunnel = {};
+  FUNNEL_STAGES.forEach(stage => {
+    segmentFunnel[stage.key] = {
+      actual: metrics[stage.key] || 0,
+      target: Math.max(1, Math.round((overallFunnel[stage.key]?.target || 0) * factor))
+    };
+  });
 
-      <!-- 主要KPIカード -->
-      <div class="grid grid-cols-3 gap-2">
-        <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80 text-center">
-          <p class="text-[9px] text-slate-500 font-bold uppercase">登録数</p>
-          <p class="text-sm font-black text-white mt-0.5">${metrics.registrations} <span class="text-[9px] text-slate-400 font-normal">名</span></p>
-        </div>
-        <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80 text-center">
-          <p class="text-[9px] text-slate-500 font-bold uppercase">推薦数</p>
-          <p class="text-sm font-black text-white mt-0.5">${metrics.recommendations} <span class="text-[9px] text-slate-400 font-normal">件</span></p>
-        </div>
-        <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80 text-center">
-          <p class="text-[9px] text-slate-500 font-bold uppercase">決定数</p>
-          <p class="text-sm font-black text-brand-emerald mt-0.5">${metrics.placements} <span class="text-[9px] text-slate-400 font-normal">名</span></p>
-        </div>
-      </div>
+  const labelWidth = 142;
+  const columnWidth = 173;
+  const stickyLabelClass = 'sticky left-0 z-50 bg-[#202b3f] border-r border-slate-700/80';
+  const stickyOverallClass = 'sticky z-40 bg-[#202b3f] border-r border-slate-700/80';
 
-      <!-- プロセス詳細バー -->
-      <div class="space-y-2 mt-2">
-        <h5 class="text-[10px] font-bold text-slate-400 tracking-wider">プロセス推移 (対登録比)</h5>
-        <div class="space-y-2 pr-1 max-h-[170px] overflow-y-auto">
+  const overallHeaderCell = `
+    <div class="${stickyOverallClass} team-funnel-compare-col border-l border-slate-800/70 p-2" style="left: ${labelWidth}px;">
+      <h5 class="text-[10px] font-bold text-white truncate">全体</h5>
+      <p class="text-[8px] text-slate-500 truncate mt-0.5">全体合算</p>
+    </div>
   `;
-  
-  stageData.forEach((stage, idx) => {
-    const rateToReg = metrics.registrations > 0 ? (stage.val / metrics.registrations) * 100 : 0;
-    
-    // 前のステップからの移行率
-    let transitionText = '';
-    if (idx > 0) {
-      const prevVal = stageData[idx - 1].val;
-      const transRate = prevVal > 0 ? (stage.val / prevVal) * 100 : 0;
-      transitionText = `<span class="text-[8.5px] text-slate-400">移行率: ${transRate.toFixed(0)}%</span>`;
-    }
-    
-    html += `
-      <div class="text-[10px]">
-        <div class="flex justify-between items-center mb-0.5">
-          <span class="font-bold text-slate-300">${stage.name}</span>
-          <div class="flex items-center gap-2">
-            ${transitionText}
-            <span class="font-bold text-white">${stage.val}名 <span class="text-[9.5px] text-slate-500">(${rateToReg.toFixed(0)}%)</span></span>
+
+  const segmentHeaderCell = `
+    <div class="team-funnel-compare-col border-l border-slate-700/70 bg-slate-800/30 p-2">
+      <h5 class="text-[10px] font-bold text-brand-cyan truncate">${rowVal} × ${colVal}</h5>
+      <p class="text-[8px] text-slate-400 truncate mt-0.5">選択セグメント</p>
+    </div>
+  `;
+
+  let stageRowsHtml = '';
+  FUNNEL_STAGES.forEach((stage, index) => {
+    const overallMetric = overallFunnel[stage.key];
+    const overallClasses = FUNNEL_STAGE_CLASSES[stage.accent];
+    const overallRegActual = overallFunnel.registrations.actual || 1;
+    const overallRegTarget = overallFunnel.registrations.target || 1;
+    const overallActualRate = overallRegActual > 0 ? (overallMetric.actual / overallRegActual) * 100 : 0;
+    const overallTargetRate = overallRegTarget > 0 ? (overallMetric.target / overallRegTarget) * 100 : 0;
+
+    const segmentMetric = segmentFunnel[stage.key];
+    const segmentRegActual = segmentFunnel.registrations.actual || 1;
+    const segmentRegTarget = segmentFunnel.registrations.target || 1;
+    const segmentActualRate = segmentRegActual > 0 ? (segmentMetric.actual / segmentRegActual) * 100 : 0;
+    const segmentTargetRate = segmentRegTarget > 0 ? (segmentMetric.target / segmentRegTarget) * 100 : 0;
+
+    // Stage row label cell
+    const labelCell = `
+      <div class="${stickyLabelClass} p-1.5 flex items-center justify-between gap-1.5 text-left w-full h-full min-h-[28px]">
+        <div class="flex items-center gap-1.5 min-w-0 flex-1">
+          <span class="w-[18px] h-[18px] rounded-md border ${overallClasses.icon} flex items-center justify-center flex-shrink-0">
+            <i data-lucide="${stage.icon}" class="w-3 h-3"></i>
+          </span>
+          <div class="min-w-0 flex-1">
+            <p class="text-[9px] font-extrabold text-white leading-tight">${index + 1}. ${stage.fullName}</p>
           </div>
-        </div>
-        <div class="w-full bg-slate-950/60 rounded-full h-1.5 overflow-hidden border border-slate-800/60">
-          <div class="h-full rounded-full ${stage.color}" style="width: ${Math.min(rateToReg, 100)}%"></div>
         </div>
       </div>
     `;
-  });
-  
-  html += `
+
+    // Overall metrics for this stage
+    const overallStageCell = `
+      <div class="${stickyOverallClass} border-l border-t border-slate-800/60 p-1.5" style="left: ${labelWidth}px;">
+        <div class="w-full text-left">
+          <div class="flex items-center justify-between gap-1">
+            <span class="text-[9px] text-slate-400 font-semibold truncate">
+              <strong class="text-[10.5px] text-white font-extrabold">${overallMetric.actual.toLocaleString()}</strong>
+              <span class="text-slate-600">/</span>
+              <strong class="text-[10.5px] text-slate-300 font-extrabold">${overallMetric.target.toLocaleString()}</strong>
+            </span>
+          </div>
+          <div class="mt-1 w-full bg-slate-700/70 rounded-md h-3.5 relative flex items-center overflow-hidden border border-slate-600/70">
+            <div class="bg-gradient-to-r ${overallClasses.bar} h-full rounded-l-lg opacity-85" style="width: ${Math.min(overallActualRate, 100)}%"></div>
+            <span class="absolute left-2 text-[8px] font-bold text-white drop-shadow">${overallActualRate.toFixed(1)}%</span>
+            <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(overallTargetRate, 100)}%"></div>
+          </div>
         </div>
       </div>
+    `;
 
-      <!-- AIインサイトとアドバイス -->
-      <div class="mt-4 p-3 rounded-xl border border-slate-800/80 bg-slate-950/40 space-y-1.5">
-        <div class="flex items-center gap-1 text-[10px] font-bold text-brand-cyan">
-          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-          <span>プロセス課題と対策推奨</span>
+    // Segment metrics for this stage
+    const segmentStageCell = `
+      <div class="border-l border-t border-slate-700/60 p-1.5 bg-slate-800/25">
+        <div class="w-full text-left">
+          <div class="flex items-center justify-between gap-1">
+            <span class="text-[9px] text-slate-400 font-semibold truncate">
+              <strong class="text-[10.5px] text-white font-extrabold">${segmentMetric.actual.toLocaleString()}</strong>
+              <span class="text-slate-600">/</span>
+              <strong class="text-[10.5px] text-slate-300 font-extrabold">${segmentMetric.target.toLocaleString()}</strong>
+            </span>
+          </div>
+          <div class="mt-1 w-full bg-slate-700/70 rounded-md h-3.5 relative flex items-center overflow-hidden border border-slate-600/70">
+            <div class="bg-gradient-to-r ${overallClasses.bar} h-full rounded-l-lg opacity-85" style="width: ${Math.min(segmentActualRate, 100)}%"></div>
+            <span class="absolute left-2 text-[8px] font-bold text-white drop-shadow">${segmentActualRate.toFixed(1)}%</span>
+            <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(segmentTargetRate, 100)}%"></div>
+          </div>
         </div>
-        <p class="text-[9.5px] text-slate-300 leading-relaxed">${insights.text}</p>
-        <p class="text-[9.5px] text-slate-400 leading-relaxed border-t border-slate-850 pt-1.5 mt-1.5"><strong class="text-brand-amber font-bold">【推奨アクション】</strong>${insights.advice}</p>
+      </div>
+    `;
+
+    // Transition rate row (if index > 0)
+    let transitionRow = '';
+    if (index > 0) {
+      const isStageExpanded = state.expandedStages?.[stage.key] || false;
+      const transitionLabelCell = `
+        <div class="${stickyLabelClass} funnel-transition-label-cell border-t border-slate-800/70 px-1.5 py-0.5 flex items-center justify-between text-left w-full h-full min-h-[20px]">
+          <button onclick="toggleComparisonStageActions('${stage.key}', this)" data-action-stage="${stage.key}" class="flex items-center gap-1 min-w-0 flex-1 hover:text-brand-cyan transition text-left group/expand" title="行動チェックを展開/折りたたむ">
+            <span class="p-1 rounded bg-slate-900/40 border border-slate-700/80 text-slate-400 group-hover/expand:text-white transition flex-shrink-0">
+              <i data-lucide="chevron-down" class="process-action-chevron w-3 h-3 transition-transform ${isStageExpanded ? 'rotate-180' : ''}"></i>
+            </span>
+            <span class="text-[8.5px] font-extrabold text-slate-300 group-hover/expand:text-white transition truncate">プロセス移行率</span>
+          </button>
+        </div>
+      `;
+
+      // Overall transition rate
+      const prevStage = FUNNEL_STAGES[index - 1];
+      const prevOverallMetric = overallFunnel[prevStage.key];
+      const overallTransitionRate = prevOverallMetric.actual > 0 ? (overallMetric.actual / prevOverallMetric.actual) * 100 : 0;
+      const overallTargetTransitionRate = prevOverallMetric.target > 0 ? (overallMetric.target / prevOverallMetric.target) * 100 : 0;
+      const overallTransitionGap = overallTransitionRate - overallTargetTransitionRate;
+      const overallIsWeak = overallTransitionGap < 0;
+      const overallTransitionBarClass = overallTransitionGap >= 0 ? 'bg-emerald-400' : (overallTransitionGap >= -3 ? 'bg-slate-300/80' : 'bg-rose-400');
+      const overallTransitionCell = `
+        <div class="${stickyOverallClass} funnel-transition-cell ${overallIsWeak ? 'is-weak bg-rose-950' : ''} border-l border-t border-slate-800/60 px-1.5 py-1 flex flex-col justify-center gap-1" style="left: ${labelWidth}px;">
+          <div class="w-full text-left flex items-center justify-between gap-2 leading-none">
+            <span class="text-[8.5px] whitespace-nowrap text-slate-200">
+              <strong>${overallTransitionRate.toFixed(1)}%</strong>
+              <span class="text-slate-600">/</span>
+              <span class="text-slate-400">${overallTargetTransitionRate.toFixed(1)}%</span>
+            </span>
+          </div>
+          <div class="w-full bg-slate-800/60 rounded-full h-0.5 relative overflow-hidden">
+            <div class="h-full rounded-full ${overallTransitionBarClass}" style="width: ${Math.min(overallTransitionRate, 100)}%"></div>
+          </div>
+        </div>
+      `;
+
+      // Segment transition rate & toggleable action checklists
+      const prevSegmentMetric = segmentFunnel[prevStage.key];
+      const segmentTransitionRate = prevSegmentMetric.actual > 0 ? (segmentMetric.actual / prevSegmentMetric.actual) * 100 : 0;
+      const segmentTargetTransitionRate = prevSegmentMetric.target > 0 ? (segmentMetric.target / prevSegmentMetric.target) * 100 : 0;
+      const segmentTransitionGap = segmentTransitionRate - segmentTargetTransitionRate;
+      const segmentIsWeak = segmentTransitionGap < 0;
+      const segmentTransitionBarClass = segmentTransitionGap >= 0 ? 'bg-emerald-400' : (segmentTransitionGap >= -3 ? 'bg-slate-300/80' : 'bg-rose-400');
+      
+      const panelId = `cross-compare-${stage.key}-actions`;
+      const actionItems = getProcessActionChecks(stage.key, segmentFunnel, 'team');
+      const actionPanel = `
+        <div id="${panelId}" class="process-action-panel ${isStageExpanded ? '' : 'hidden'} mt-2 space-y-2 border-l border-slate-800/80 pl-2">
+          ${actionItems.map(action => {
+            const itemClass = action.rate >= 100 ? 'text-emerald-300 font-bold' : (action.rate >= 80 ? 'text-brand-amber font-bold' : 'text-rose-300 font-bold');
+            const barClass = action.rate >= 100 ? 'bg-emerald-400' : (action.rate >= 80 ? 'bg-brand-amber' : 'bg-rose-400');
+            return `
+              <div class="py-1">
+                <div class="flex items-center justify-between gap-2 mb-1">
+                  <h6 class="text-[9px] font-medium text-slate-300 truncate">${action.label}</h6>
+                  <span class="${itemClass} text-[8.5px]">${action.rate.toFixed(0)}%</span>
+                </div>
+                <div class="h-1 bg-slate-800/80 rounded-full overflow-hidden">
+                  <div class="h-full rounded-full ${barClass}" style="width: ${Math.min(action.rate, 100)}%"></div>
+                </div>
+                <div class="mt-0.5 flex justify-between text-[7.5px] text-slate-500">
+                  <span>${action.actual.toLocaleString()}${action.unit}</span>
+                  <span>${action.target.toLocaleString()}${action.unit}</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+
+      const segmentTransitionCell = `
+        <div class="funnel-transition-cell ${segmentIsWeak ? 'is-weak bg-rose-500/10' : 'bg-slate-950/30'} border-l border-t border-slate-800/60 px-1.5 py-1 flex flex-col justify-center gap-1">
+          <div class="w-full text-left flex items-center justify-between gap-2 leading-none">
+            <span class="text-[8.5px] whitespace-nowrap text-slate-200">
+              <strong>${segmentTransitionRate.toFixed(1)}%</strong>
+              <span class="text-slate-600">/</span>
+              <span class="text-slate-400">${segmentTargetTransitionRate.toFixed(1)}%</span>
+            </span>
+          </div>
+          <div class="w-full bg-slate-800/60 rounded-full h-0.5 relative overflow-hidden">
+            <div class="h-full rounded-full ${segmentTransitionBarClass}" style="width: ${Math.min(segmentTransitionRate, 100)}%"></div>
+          </div>
+          ${actionPanel}
+        </div>
+      `;
+
+      transitionRow = `${transitionLabelCell}${overallTransitionCell}${segmentTransitionCell}`;
+    }
+
+    stageRowsHtml += `${transitionRow}${labelCell}${overallStageCell}${segmentStageCell}`;
+  });
+
+  let html = `
+    <div class="mb-5">
+      <h3 class="text-base font-bold text-white">${rowVal} × ${colVal} のファネル分析</h3>
+    </div>
+
+    <div id="crossFunnelComparisonMatrix" class="team-funnel-compare-scroll overflow-x-auto pb-1 flex-1">
+      <div class="inline-grid min-w-full rounded-xl border border-slate-700/80 bg-slate-800/35" style="grid-template-columns: ${labelWidth}px ${columnWidth}px ${columnWidth}px;">
+        <div class="${stickyLabelClass} p-2">
+          <p class="text-xs font-bold text-slate-200">比較指標</p>
+          <p class="text-[8.5px] text-slate-500 mt-1">工程名は左固定</p>
+        </div>
+        ${overallHeaderCell}
+        ${segmentHeaderCell}
+        ${stageRowsHtml}
       </div>
     </div>
   `;

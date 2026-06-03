@@ -31,9 +31,21 @@ body {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.glass-panel:hover {
+/* 構造パネル (サイドバーやヘッダー) 以外のインタラクティブなパネルのみホバー時の光彩を適用 */
+.glass-panel:not(aside):not(header):not(.glass-panel-static):hover {
   border-color: rgba(203, 213, 225, 0.22);
   box-shadow: 0 14px 36px rgba(7, 12, 24, 0.34);
+}
+
+/* トグルボタンのプレミアムデザイン */
+#sidebarToggle {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+#sidebarToggle:hover {
+  transform: scale(1.06);
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.3);
+  border-color: rgba(59, 130, 246, 0.5);
+  background-color: rgba(71, 85, 105, 0.8);
 }
 
 /* Tailwindの濃色ユーティリティを少し明るい業務画面トーンへ寄せる */
@@ -575,42 +587,64 @@ input[type="range"].slider-cyan::-webkit-slider-thumb:hover {
 #mainScrollArea .text-base { font-size: 17px !important; }
 
 /* 比較マトリクスのセルの高さ・縦パディング調整 (1.2倍) */
-#teamFunnelComparisonMatrix .inline-grid > div {
+#teamFunnelComparisonMatrix .inline-grid > div,
+#crossFunnelComparisonMatrix .inline-grid > div {
   padding-top: 10px !important;
   padding-bottom: 10px !important;
 }
-#teamFunnelComparisonMatrix .funnel-transition-cell {
+#teamFunnelComparisonMatrix .funnel-transition-cell,
+#crossFunnelComparisonMatrix .funnel-transition-cell {
   padding-top: 6px !important;
   padding-bottom: 6px !important;
 }
-#teamFunnelComparisonMatrix .min-h-\[34px\] {
+#teamFunnelComparisonMatrix .min-h-\[34px\],
+#crossFunnelComparisonMatrix .min-h-\[34px\] {
   min-height: 41px !important;
 }
-#teamFunnelComparisonMatrix .min-h-\[28px\] {
+#teamFunnelComparisonMatrix .min-h-\[28px\],
+#crossFunnelComparisonMatrix .min-h-\[28px\] {
   min-height: 34px !important;
 }
-#teamFunnelComparisonMatrix .min-h-\[20px\] {
+#teamFunnelComparisonMatrix .min-h-\[20px\],
+#crossFunnelComparisonMatrix .min-h-\[20px\] {
   min-height: 24px !important;
 }
-#teamFunnelComparisonMatrix .h-3\.5 {
+#teamFunnelComparisonMatrix .h-3\.5,
+#crossFunnelComparisonMatrix .h-3\.5 {
   height: 18px !important;
 }
 
 /* 左側・チーム詳細の縦型ファネルバーの縦幅・サイズ調整 (1.2倍) */
 #overviewFunnelStepsContainer .w-7,
+#crossFunnelStepsContainer .w-7,
 #funnelStepsContainer .w-7 {
   width: 2.25rem !important;
 }
 #overviewFunnelStepsContainer .h-7,
+#crossFunnelStepsContainer .h-7,
 #funnelStepsContainer .h-7 {
   height: 2.25rem !important;
 }
 #overviewFunnelStepsContainer .h-5\.5,
+#crossFunnelStepsContainer .h-5\.5,
 #funnelStepsContainer .h-5\.5 {
   height: 1.65rem !important;
 }
 #overviewFunnelStepsContainer button,
+#crossFunnelStepsContainer button,
 #funnelStepsContainer button {
   padding-top: 0.375rem !important;
   padding-bottom: 0.375rem !important;
 }
+
+/* クロス集計タブの左側パネル：余白とフォントサイズをビジネスダッシュボード用にコンパクト化 */
+#crossLeftPane .text-\[8px\] { font-size: 8px !important; }
+#crossLeftPane .text-\[8\.5px\] { font-size: 8.5px !important; }
+#crossLeftPane .text-\[9px\] { font-size: 9px !important; }
+#crossLeftPane .text-\[9\.5px\] { font-size: 9.5px !important; }
+#crossLeftPane .text-\[10px\] { font-size: 10px !important; }
+#crossLeftPane .text-\[10\.5px\] { font-size: 10.5px !important; }
+#crossLeftPane .text-\[11px\] { font-size: 11px !important; }
+#crossLeftPane .text-xs { font-size: 11.5px !important; }
+#crossLeftPane .text-sm { font-size: 13px !important; }
+#crossLeftPane .text-base { font-size: 15px !important; }
