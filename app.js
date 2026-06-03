@@ -103,6 +103,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // イベントリスナー登録
 function initEventListeners() {
+  // サイドバーの開閉状態の復元とイベントリスナー設定
+  const sidebar = document.getElementById('sidebar');
+  const sidebarToggle = document.getElementById('sidebarToggle');
+  if (sidebar && sidebarToggle) {
+    const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+    if (isCollapsed) {
+      sidebar.classList.add('collapsed');
+    }
+
+    sidebarToggle.addEventListener('click', () => {
+      sidebar.classList.toggle('collapsed');
+      const collapsed = sidebar.classList.contains('collapsed');
+      localStorage.setItem('sidebarCollapsed', collapsed);
+
+      // トランジション期間中にウィンドウサイズ変更イベントを発火させ、チャートの大きさを追従させる
+      let count = 0;
+      const interval = setInterval(() => {
+        window.dispatchEvent(new Event('resize'));
+        count++;
+        if (count >= 15) {
+          clearInterval(interval);
+        }
+      }, 20);
+    });
+  }
+
   // チームセレクターの変更
   const teamSel = document.getElementById('teamSelector');
   if (teamSel) {
@@ -979,15 +1005,19 @@ function renderTeamFunnelComparisonMatrix() {
   const stageRows = FUNNEL_STAGES.map((stage, index) => {
     const isSortedStage = state.funnelComparisonSort?.stageKey === stage.key && state.funnelComparisonSort?.type !== 'transition';
     const labelCell = `
-      <button data-comparison-sort-stage="${stage.key}" class="${stickyLabelClass} p-1.5 flex items-center gap-1.5 text-left group hover:bg-slate-900/80 transition w-full h-full min-h-[28px]">
-        <span class="w-[18px] h-[18px] rounded-md border ${FUNNEL_STAGE_CLASSES[stage.accent].icon} flex items-center justify-center flex-shrink-0">
-          <i data-lucide="${stage.icon}" class="w-3 h-3"></i>
-        </span>
-        <div class="min-w-0 flex-1">
-          <p class="text-[9px] font-extrabold text-white leading-tight">${index + 1}. ${stage.fullName}</p>
+      <div class="${stickyLabelClass} p-1.5 flex items-center justify-between gap-1.5 text-left w-full h-full min-h-[28px]">
+        <div class="flex items-center gap-1.5 min-w-0 flex-1">
+          <span class="w-[18px] h-[18px] rounded-md border ${FUNNEL_STAGE_CLASSES[stage.accent].icon} flex items-center justify-center flex-shrink-0">
+            <i data-lucide="${stage.icon}" class="w-3 h-3"></i>
+          </span>
+          <div class="min-w-0 flex-1">
+            <p class="text-[9px] font-extrabold text-white leading-tight">${index + 1}. ${stage.fullName}</p>
+          </div>
         </div>
-        <i data-lucide="${isSortedStage && state.funnelComparisonSort.direction === 'asc' ? 'arrow-up-wide-narrow' : 'arrow-down-wide-narrow'}" class="w-3.5 h-3.5 ${isSortedStage ? 'text-brand-cyan opacity-100' : 'text-slate-500 opacity-0 group-hover:opacity-100'} transition"></i>
-      </button>
+        <button data-comparison-sort-stage="${stage.key}" class="p-1 rounded hover:bg-slate-700/50 text-slate-500 hover:text-white transition flex-shrink-0" title="ソート">
+          <i data-lucide="${isSortedStage && state.funnelComparisonSort.direction === 'asc' ? 'arrow-up-wide-narrow' : 'arrow-down-wide-narrow'}" class="w-3.5 h-3.5 ${isSortedStage ? 'text-brand-cyan opacity-100' : 'text-slate-500 opacity-50 hover:opacity-100'} transition"></i>
+        </button>
+      </div>
     `;
 
     const overallMetric = overallFunnel[stage.key];
@@ -1045,16 +1075,19 @@ function renderTeamFunnelComparisonMatrix() {
     }).join('');
 
     const isSortedTransition = state.funnelComparisonSort?.stageKey === stage.key && state.funnelComparisonSort?.type === 'transition';
+    const isStageExpanded = state.expandedStages?.[stage.key] || false;
     const transitionLabelCell = `
-      <button data-comparison-sort-stage="${stage.key}" data-comparison-sort-type="transition" class="${stickyLabelClass} funnel-transition-label-cell border-t border-slate-800/70 px-1.5 py-0.5 flex items-center justify-between text-left group hover:bg-slate-900/80 transition w-full h-full min-h-[20px]">
-        <div class="flex items-center gap-1">
-          <span class="w-3.5 h-3.5 rounded bg-slate-900/80 border border-slate-700/80 flex items-center justify-center flex-shrink-0">
-            <i data-lucide="arrow-down-up" class="w-2.5 h-2.5 text-slate-400"></i>
+      <div class="${stickyLabelClass} funnel-transition-label-cell border-t border-slate-800/70 px-1.5 py-0.5 flex items-center justify-between text-left w-full h-full min-h-[20px]">
+        <button onclick="toggleComparisonStageActions('${stage.key}', this)" data-action-stage="${stage.key}" class="flex items-center gap-1 min-w-0 flex-1 hover:text-brand-cyan transition text-left group/expand" title="行動チェックを展開/折りたたむ">
+          <span class="p-1 rounded bg-slate-900/40 border border-slate-700/80 text-slate-400 group-hover/expand:text-white transition flex-shrink-0">
+            <i data-lucide="chevron-down" class="process-action-chevron w-3 h-3 transition-transform ${isStageExpanded ? 'rotate-180' : ''}"></i>
           </span>
-          <span class="text-[8.5px] font-extrabold text-slate-300 group-hover:text-white transition">プロセス移行率</span>
-        </div>
-        <i data-lucide="${isSortedTransition && state.funnelComparisonSort.direction === 'asc' ? 'arrow-up-wide-narrow' : 'arrow-down-wide-narrow'}" class="w-3 h-3 ${isSortedTransition ? 'text-brand-cyan opacity-100' : 'text-slate-500 opacity-0 group-hover:opacity-100'} transition"></i>
-      </button>
+          <span class="text-[8.5px] font-extrabold text-slate-300 group-hover/expand:text-white transition truncate">プロセス移行率</span>
+        </button>
+        <button data-comparison-sort-stage="${stage.key}" data-comparison-sort-type="transition" class="p-1 rounded hover:bg-slate-700/50 text-slate-500 hover:text-white transition flex-shrink-0" title="移行率でソート">
+          <i data-lucide="${isSortedTransition && state.funnelComparisonSort.direction === 'asc' ? 'arrow-up-wide-narrow' : 'arrow-down-wide-narrow'}" class="w-3 h-3 ${isSortedTransition ? 'text-brand-cyan opacity-100' : 'text-slate-500 opacity-50 hover:opacity-100'} transition"></i>
+        </button>
+      </div>
     `;
 
     const transitionRow = index === 0 ? '' : `
@@ -1072,21 +1105,15 @@ function renderTeamFunnelComparisonMatrix() {
           : transitionGap >= -3
             ? 'bg-slate-300/80'
             : 'bg-rose-400';
-        const isStageExpanded = state.expandedStages?.[stage.key] || false;
         return `
-          <div class="${stickyOverallClass} funnel-transition-cell ${isWeakTransition ? 'is-weak bg-rose-950' : ''} border-l border-t border-slate-800/60 px-1.5 py-0.5 flex flex-col justify-center gap-0.5" style="left: ${labelWidth}px;">
-            <button onclick="toggleComparisonStageActions('${stage.key}', this)" data-action-stage="${stage.key}" class="w-full text-left py-0 hover:text-brand-cyan transition flex items-center justify-between gap-2 group leading-none">
-              <div class="flex items-center gap-1.5 min-w-0">
-                <div class="min-w-0">
-                  <span class="text-[8.5px] whitespace-nowrap text-slate-200 group-hover:text-white transition">
-                    <strong>${transitionRate.toFixed(1)}%</strong>
-                    <span class="text-slate-600">/</span>
-                    <span class="text-slate-400">${targetTransitionRate.toFixed(1)}%</span>
-                  </span>
-                </div>
-              </div>
-              <i data-lucide="chevron-down" class="process-action-chevron w-3 h-3 text-slate-500 transition-transform group-hover:text-brand-cyan ${isStageExpanded ? 'rotate-180' : ''}"></i>
-            </button>
+          <div class="${stickyOverallClass} funnel-transition-cell ${isWeakTransition ? 'is-weak bg-rose-950' : ''} border-l border-t border-slate-800/60 px-1.5 py-1 flex flex-col justify-center gap-1" style="left: ${labelWidth}px;">
+            <div class="w-full text-left flex items-center justify-between gap-2 leading-none">
+              <span class="text-[8.5px] whitespace-nowrap text-slate-200">
+                <strong>${transitionRate.toFixed(1)}%</strong>
+                <span class="text-slate-600">/</span>
+                <span class="text-slate-400">${targetTransitionRate.toFixed(1)}%</span>
+              </span>
+            </div>
             <div class="w-full bg-slate-800/60 rounded-full h-0.5 relative overflow-hidden">
               <div class="h-full rounded-full ${transitionBarClass}" style="width: ${Math.min(transitionRate, 100)}%"></div>
             </div>
@@ -1107,7 +1134,6 @@ function renderTeamFunnelComparisonMatrix() {
           : transitionGap >= -3
             ? 'bg-slate-300/80'
             : 'bg-rose-400';
-        const isStageExpanded = state.expandedStages?.[stage.key] || false;
         const panelId = `team-compare-${mode}-${item.id}-${stage.key}-actions`;
         const actionItems = getProcessActionChecks(stage.key, fData, mode === 'member' ? 'member' : 'team');
         const actionPanel = `
@@ -1142,19 +1168,14 @@ function renderTeamFunnelComparisonMatrix() {
           </div>
         `;
         return `
-          <div class="funnel-transition-cell ${isWeakTransition ? 'is-weak bg-rose-500/10' : 'bg-slate-950/30'} border-l border-t border-slate-800/60 px-1.5 py-0.5 flex flex-col justify-center gap-0.5">
-            <button onclick="toggleComparisonStageActions('${stage.key}', this)" data-action-stage="${stage.key}" class="w-full text-left py-0 hover:text-brand-cyan transition flex items-center justify-between gap-2 group leading-none">
-              <div class="flex items-center gap-1.5 min-w-0">
-                <div class="min-w-0">
-                  <span class="text-[8.5px] whitespace-nowrap text-slate-200 group-hover:text-white transition">
-                    <strong>${transitionRate.toFixed(1)}%</strong>
-                    <span class="text-slate-600">/</span>
-                    <span class="text-slate-400">${targetTransitionRate.toFixed(1)}%</span>
-                  </span>
-                </div>
-              </div>
-              <i data-lucide="chevron-down" class="process-action-chevron w-3 h-3 text-slate-500 transition-transform group-hover:text-brand-cyan ${isStageExpanded ? 'rotate-180' : ''}"></i>
-            </button>
+          <div class="funnel-transition-cell ${isWeakTransition ? 'is-weak bg-rose-500/10' : 'bg-slate-950/30'} border-l border-t border-slate-800/60 px-1.5 py-1 flex flex-col justify-center gap-1">
+            <div class="w-full text-left flex items-center justify-between gap-2 leading-none">
+              <span class="text-[8.5px] whitespace-nowrap text-slate-200">
+                <strong>${transitionRate.toFixed(1)}%</strong>
+                <span class="text-slate-600">/</span>
+                <span class="text-slate-400">${targetTransitionRate.toFixed(1)}%</span>
+              </span>
+            </div>
             <div class="w-full bg-slate-800/60 rounded-full h-0.5 relative overflow-hidden">
               <div class="h-full rounded-full ${transitionBarClass}" style="width: ${Math.min(transitionRate, 100)}%"></div>
             </div>

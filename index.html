@@ -37,7 +37,7 @@
   <div class="neon-glow-2"></div>
   <div class="neon-glow-3"></div>
 
-  <aside class="w-64 glass-panel border-r border-slate-800 flex flex-col z-20 flex-shrink-0">
+  <aside id="sidebar" class="w-64 glass-panel border-r border-slate-800 flex flex-col z-20 flex-shrink-0">
     <div class="p-6 border-b border-slate-800/60">
       <div class="flex items-center gap-3">
         <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-blue to-brand-cyan flex items-center justify-center shadow-lg shadow-brand-blue/20">
@@ -77,9 +77,14 @@
 
   <main class="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10">
     <header class="h-12 glass-panel border-b border-slate-800 flex items-center justify-between px-5 z-10 flex-shrink-0">
-      <div>
-        <div class="text-[10px] text-slate-400 font-semibold tracking-wider uppercase">Sales View</div>
-        <h2 id="currentTabTitle" class="text-sm font-bold text-white tracking-tight">ファネル分析</h2>
+      <div class="flex items-center gap-3">
+        <button id="sidebarToggle" class="p-1.5 rounded-lg bg-slate-800/60 border border-slate-700/50 hover:bg-slate-700/60 text-slate-300 hover:text-white transition flex items-center justify-center cursor-pointer" title="サイドバーの開閉">
+          <i data-lucide="menu" class="w-4 h-4"></i>
+        </button>
+        <div>
+          <div class="text-[10px] text-slate-400 font-semibold tracking-wider uppercase">Sales View</div>
+          <h2 id="currentTabTitle" class="text-sm font-bold text-white tracking-tight">ファネル分析</h2>
+        </div>
       </div>
     </header>
 

@@ -134,9 +134,27 @@ body {
   }
 }
 
+/* サイドバーと開閉アニメーション */
+#sidebar {
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.3s ease;
+  overflow: hidden;
+}
+
+#sidebar.collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+  border-right-color: transparent !important;
+}
+
 /* サイドバーアイテム */
 .sidebar-link {
   transition: all 0.2s ease-in-out;
+  white-space: nowrap;
 }
 
 .sidebar-link.active {
