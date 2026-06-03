@@ -906,6 +906,13 @@ function renderTeamFunnelComparisonMatrix() {
   const items = getFunnelComparisonItems(mode);
   const hiddenIds = new Set(state.hiddenComparisonItemsByMode[mode] || []);
   let visibleItems = items.filter(item => !hiddenIds.has(item.id));
+
+  const toggleAllBtn = document.getElementById('toggleAllComparisonBtn');
+  if (toggleAllBtn) {
+    const hasHidden = items.some(item => hiddenIds.has(item.id));
+    toggleAllBtn.textContent = hasHidden ? '全項目表示' : '全項目非表示';
+  }
+
   const sortState = state.funnelComparisonSort || {};
   if (sortState.stageKey) {
     const direction = sortState.direction === 'asc' ? 1 : -1;
@@ -1000,8 +1007,8 @@ function renderTeamFunnelComparisonMatrix() {
   const stageRows = FUNNEL_STAGES.map((stage, index) => {
     const isSortedStage = state.funnelComparisonSort?.stageKey === stage.key && state.funnelComparisonSort?.type !== 'transition';
     const labelCell = `
-      <div class="${stickyLabelClass} p-1.5 flex items-center justify-between gap-1.5 text-left w-full h-full min-h-[28px]">
-        <div class="flex items-center gap-1.5 min-w-0 flex-1">
+      <div class="${stickyLabelClass} px-1.5 py-0 flex items-stretch justify-between gap-1.5 text-left w-full h-full min-h-[28px]">
+        <div class="flex items-center gap-1.5 min-w-0 flex-1 py-1.5">
           <span class="w-[18px] h-[18px] rounded-md border ${FUNNEL_STAGE_CLASSES[stage.accent].icon} flex items-center justify-center flex-shrink-0">
             <i data-lucide="${stage.icon}" class="w-3 h-3"></i>
           </span>
@@ -1009,7 +1016,7 @@ function renderTeamFunnelComparisonMatrix() {
             <p class="text-[9px] font-extrabold text-white leading-tight">${index + 1}. ${stage.fullName}</p>
           </div>
         </div>
-        <button data-comparison-sort-stage="${stage.key}" class="p-1 rounded hover:bg-slate-700/50 text-slate-500 hover:text-white transition flex-shrink-0" title="ソート">
+        <button data-comparison-sort-stage="${stage.key}" class="px-2 hover:bg-slate-700/50 text-slate-500 hover:text-white transition flex-shrink-0 h-full flex items-center justify-center rounded" title="ソート">
           <i data-lucide="${isSortedStage && state.funnelComparisonSort.direction === 'asc' ? 'arrow-up-wide-narrow' : 'arrow-down-wide-narrow'}" class="w-3.5 h-3.5 ${isSortedStage ? 'text-brand-cyan opacity-100' : 'text-slate-500 opacity-50 hover:opacity-100'} transition"></i>
         </button>
       </div>
@@ -1072,15 +1079,15 @@ function renderTeamFunnelComparisonMatrix() {
     const isSortedTransition = state.funnelComparisonSort?.stageKey === stage.key && state.funnelComparisonSort?.type === 'transition';
     const isStageExpanded = state.expandedStages?.[stage.key] || false;
     const transitionLabelCell = `
-      <div class="${stickyLabelClass} funnel-transition-label-cell border-t border-slate-800/70 px-1.5 py-0.5 flex items-center justify-between text-left w-full h-full min-h-[20px]">
-        <button onclick="toggleComparisonStageActions('${stage.key}', this)" data-action-stage="${stage.key}" class="flex items-center gap-1 min-w-0 flex-1 hover:text-brand-cyan transition text-left group/expand" title="行動チェックを展開/折りたたむ">
+      <div class="${stickyLabelClass} funnel-transition-label-cell border-t border-slate-800/70 px-1.5 py-0 flex items-stretch justify-between text-left w-full h-full min-h-[20px]">
+        <button onclick="toggleComparisonStageActions('${stage.key}', this)" data-action-stage="${stage.key}" class="flex items-center gap-1 min-w-0 flex-1 hover:text-brand-cyan transition text-left group/expand h-full py-1" title="行動チェックを展開/折りたたむ">
           <span class="p-1 rounded bg-slate-900/40 border border-slate-700/80 text-slate-400 group-hover/expand:text-white transition flex-shrink-0">
             <i data-lucide="chevron-down" class="process-action-chevron w-3 h-3 transition-transform ${isStageExpanded ? 'rotate-180' : ''}"></i>
           </span>
           <span class="text-[8.5px] font-extrabold text-slate-300 group-hover/expand:text-white transition truncate">プロセス移行率</span>
         </button>
-        <button data-comparison-sort-stage="${stage.key}" data-comparison-sort-type="transition" class="p-1 rounded hover:bg-slate-700/50 text-slate-500 hover:text-white transition flex-shrink-0" title="移行率でソート">
-          <i data-lucide="${isSortedTransition && state.funnelComparisonSort.direction === 'asc' ? 'arrow-up-wide-narrow' : 'arrow-down-wide-narrow'}" class="w-3 h-3 ${isSortedTransition ? 'text-brand-cyan opacity-100' : 'text-slate-500 opacity-50 hover:opacity-100'} transition"></i>
+        <button data-comparison-sort-stage="${stage.key}" data-comparison-sort-type="transition" class="px-2 hover:bg-slate-700/50 text-slate-500 hover:text-white transition flex-shrink-0 h-full flex items-center justify-center rounded" title="移行率でソート">
+          <i data-lucide="${isSortedTransition && state.funnelComparisonSort.direction === 'asc' ? 'arrow-up-wide-narrow' : 'arrow-down-wide-narrow'}" class="w-3.5 h-3.5 ${isSortedTransition ? 'text-brand-cyan opacity-100' : 'text-slate-500 opacity-50 hover:opacity-100'} transition"></i>
         </button>
       </div>
     `;
@@ -1262,12 +1269,20 @@ function toggleTeamComparisonVisibility(itemId) {
 
 function showAllTeamsInComparison() {
   const mode = state.funnelComparisonMode || 'team';
-  if (mode === 'member') {
-    state.memberTeamFilter = 'all';
-  }
-  state.hiddenComparisonItemsByMode[mode] = [];
-  if (mode === 'team') {
-    state.hiddenComparisonTeams = [];
+  const items = getFunnelComparisonItems(mode);
+  const hiddenIds = state.hiddenComparisonItemsByMode[mode] || [];
+  const hasHidden = items.some(item => hiddenIds.includes(item.id));
+
+  if (hasHidden) {
+    state.hiddenComparisonItemsByMode[mode] = [];
+    if (mode === 'team') {
+      state.hiddenComparisonTeams = [];
+    }
+  } else {
+    state.hiddenComparisonItemsByMode[mode] = items.map(item => item.id);
+    if (mode === 'team') {
+      state.hiddenComparisonTeams = items.map(item => item.id);
+    }
   }
   renderTeamFunnelComparisonMatrix();
 }
@@ -5453,8 +5468,8 @@ function renderSegmentDetail(rowVal, colVal, rowAxis, colAxis) {
     if (index > 0) {
       const isStageExpanded = state.expandedStages?.[stage.key] || false;
       const transitionLabelCell = `
-        <div class="${stickyLabelClass} funnel-transition-label-cell border-t border-slate-800/70 px-1.5 py-0.5 flex items-center justify-between text-left w-full h-full min-h-[20px]">
-          <button onclick="toggleComparisonStageActions('${stage.key}', this)" data-action-stage="${stage.key}" class="flex items-center gap-1 min-w-0 flex-1 hover:text-brand-cyan transition text-left group/expand" title="行動チェックを展開/折りたたむ">
+        <div class="${stickyLabelClass} funnel-transition-label-cell border-t border-slate-800/70 px-1.5 py-0 flex items-stretch justify-between text-left w-full h-full min-h-[20px]">
+          <button onclick="toggleComparisonStageActions('${stage.key}', this)" data-action-stage="${stage.key}" class="flex items-center gap-1 min-w-0 flex-1 hover:text-brand-cyan transition text-left group/expand h-full py-1" title="行動チェックを展開/折りたたむ">
             <span class="p-1 rounded bg-slate-900/40 border border-slate-700/80 text-slate-400 group-hover/expand:text-white transition flex-shrink-0">
               <i data-lucide="chevron-down" class="process-action-chevron w-3 h-3 transition-transform ${isStageExpanded ? 'rotate-180' : ''}"></i>
             </span>
