@@ -707,7 +707,7 @@ function sumFunnelItems(items) {
 }
 
 function getFunnelComparisonItems(mode = state.funnelComparisonMode) {
-  if (mode === 'region') {
+  if (mode === 'prefecture') {
     const teams = dashboardData.teamsData;
     return [
       {
@@ -719,8 +719,22 @@ function getFunnelComparisonItems(mode = state.funnelComparisonMode) {
       { id: 'kanagawa', name: '神奈川', caption: '神奈川CA', funnel: cloneFunnelData(teams.kanagawa.funnel) },
       { id: 'saitama', name: '埼玉', caption: '埼玉CA', funnel: cloneFunnelData(teams.saitama.funnel) },
       { id: 'chiba', name: '千葉', caption: '千葉CA', funnel: cloneFunnelData(teams.chiba.funnel) },
-      { id: 'kansai', name: '関西', caption: '関西CA', funnel: cloneFunnelData(teams.osaka.funnel) },
-      { id: 'tokai', name: '東海', caption: '東海CA', funnel: cloneFunnelData(teams.nagoya.funnel) }
+      { id: 'osaka', name: '大阪', caption: '関西CA', funnel: cloneFunnelData(teams.osaka.funnel) },
+      { id: 'aichi', name: '愛知', caption: '東海CA', funnel: cloneFunnelData(teams.nagoya.funnel) }
+    ];
+  }
+
+  if (mode === 'area') {
+    const teams = dashboardData.teamsData;
+    return [
+      {
+        id: 'kanto',
+        name: '関東',
+        caption: '東京・神奈川・埼玉・千葉',
+        funnel: sumFunnelItems(['group1', 'group2', 'group3', 'kanagawa', 'saitama', 'chiba'].map(id => ({ funnel: teams[id].funnel })))
+      },
+      { id: 'kansai', name: '関西', caption: '大阪', funnel: cloneFunnelData(teams.osaka.funnel) },
+      { id: 'tokai', name: '東海', caption: '愛知', funnel: cloneFunnelData(teams.nagoya.funnel) }
     ];
   }
 
@@ -745,7 +759,8 @@ function getFunnelComparisonItems(mode = state.funnelComparisonMode) {
 function getFunnelComparisonModeLabel(mode = state.funnelComparisonMode) {
   return {
     team: 'チーム',
-    region: '地域',
+    prefecture: '都道府県',
+    area: 'エリア',
     age: '年齢'
   }[mode] || 'チーム';
 }
@@ -763,6 +778,13 @@ function getComparisonStageValue(item, stageKey, type = 'metric') {
   }
 
   return metric.actual;
+}
+
+function getComparisonChipLabel(name) {
+  if (name.startsWith('東京CA ')) {
+    return name.replace('東京CA ', '').replace('グループ', 'G');
+  }
+  return name.replace('グループ', '');
 }
 
 function renderTeamFunnelComparisonMatrix() {
@@ -784,7 +806,7 @@ function renderTeamFunnelComparisonMatrix() {
     });
   }
 
-  ['team', 'region', 'age'].forEach(modeId => {
+  ['team', 'prefecture', 'area', 'age'].forEach(modeId => {
     const btn = document.getElementById(`comparison-mode-${modeId}`);
     if (btn) {
       btn.className = modeId === mode
@@ -797,7 +819,7 @@ function renderTeamFunnelComparisonMatrix() {
     const isHidden = hiddenIds.has(item.id);
     return `
       <button data-comparison-toggle="${item.id}" class="px-2.5 py-1 rounded-full border text-[9px] font-bold transition ${isHidden ? 'bg-slate-950/40 border-slate-800/80 text-slate-500 line-through hover:text-slate-300' : 'bg-slate-800/70 border-slate-700/70 text-slate-300 hover:border-brand-blue/35 hover:text-white'}">
-        ${item.name.replace('東京CA ', '').replace('グループ', 'G')}
+        ${getComparisonChipLabel(item.name)}
       </button>
     `;
   }).join('');
@@ -814,7 +836,7 @@ function renderTeamFunnelComparisonMatrix() {
   }
 
   const labelWidth = 118;
-  const columnWidth = 104;
+  const columnWidth = 144;
   const overallFunnel = sumFunnelItems(items);
   const stickyLabelClass = 'sticky left-0 z-50 bg-[#020617] border-r border-slate-800/80';
   const stickyOverallClass = 'sticky z-40 bg-[#020617] border-r border-slate-800/80';
