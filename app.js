@@ -15,6 +15,7 @@ const state = {
   hiddenComparisonItemsByMode: {},
   funnelComparisonMode: 'team',
   funnelComparisonSort: { stageKey: null, type: 'metric', direction: 'desc' },
+  memberTeamFilter: 'all',
   leaderboardMetric: 'calls',
   selectedFunnelLayer: 'team',
   teamViewMode: 'detail',
@@ -116,6 +117,13 @@ function initEventListeners() {
     if (showAllBtn) {
       e.preventDefault();
       showAllTeamsInComparison();
+      return;
+    }
+
+    const memberTeamFilterBtn = e.target.closest('[data-member-team-filter]');
+    if (memberTeamFilterBtn) {
+      e.preventDefault();
+      setMemberTeamFilter(memberTeamFilterBtn.dataset.memberTeamFilter);
       return;
     }
 
@@ -706,7 +714,59 @@ function sumFunnelItems(items) {
   return totals;
 }
 
+const MEMBER_TEAM_MAP = {
+  sato: 'group1',
+  watanabe: 'group1',
+  suzuki: 'group2',
+  tanaka: 'group2',
+  takahashi: 'osaka'
+};
+
+function memberToFunnelData(member) {
+  const bookings = Math.max(
+    member.metrics.interviews,
+    Math.round(member.metrics.calls * (member.metrics.connection_rate / 100) * (member.metrics.booking_rate / 100))
+  );
+  const proposals = Math.round(member.metrics.interviews * member.metrics.proposals_per_int);
+
+  return {
+    registrations: { actual: member.metrics.calls, target: 450 },
+    bookings: { actual: bookings, target: 35 },
+    interviews: { actual: member.metrics.interviews, target: 30 },
+    proposals: { actual: proposals, target: 120 },
+    recommendations: { actual: member.metrics.recommendations, target: 22 },
+    setups: { actual: member.metrics.interviews_set, target: 11 },
+    placements: { actual: member.metrics.placements, target: 4 }
+  };
+}
+
+function getTeamMemberCount(teamId) {
+  return dashboardData.members.filter(member => MEMBER_TEAM_MAP[member.id] === teamId).length;
+}
+
+function getTeamFilterOptions() {
+  return [
+    { id: 'all', name: '全員' },
+    ...Object.entries(dashboardData.teamsData).map(([id, team]) => ({
+      id,
+      name: getComparisonChipLabel(team.name)
+    }))
+  ];
+}
+
 function getFunnelComparisonItems(mode = state.funnelComparisonMode) {
+  if (mode === 'member') {
+    return dashboardData.members
+      .filter(member => state.memberTeamFilter === 'all' || MEMBER_TEAM_MAP[member.id] === state.memberTeamFilter)
+      .map(member => ({
+        id: member.id,
+        name: member.name,
+        caption: member.role,
+        teamId: MEMBER_TEAM_MAP[member.id] || 'unassigned',
+        funnel: memberToFunnelData(member)
+      }));
+  }
+
   if (mode === 'prefecture') {
     const teams = dashboardData.teamsData;
     return [
@@ -761,6 +821,7 @@ function getFunnelComparisonModeLabel(mode = state.funnelComparisonMode) {
     team: 'チーム',
     prefecture: '都道府県',
     area: 'エリア',
+    member: '個人',
     age: '年齢'
   }[mode] || 'チーム';
 }
@@ -806,23 +867,36 @@ function renderTeamFunnelComparisonMatrix() {
     });
   }
 
-  ['team', 'prefecture', 'area', 'age'].forEach(modeId => {
+  ['team', 'member', 'area', 'prefecture', 'age'].forEach((modeId, modeIndex, modeList) => {
     const btn = document.getElementById(`comparison-mode-${modeId}`);
     if (btn) {
+      const borderClass = modeIndex === modeList.length - 1 ? '' : ' border-r border-slate-700/80';
       btn.className = modeId === mode
-        ? 'comparison-mode-btn px-3 py-1 rounded-lg bg-slate-800/80 border border-slate-700/70 text-white'
-        : 'comparison-mode-btn px-3 py-1 rounded-lg bg-slate-950/40 border border-slate-800/80 text-slate-400 hover:text-white hover:border-brand-blue/35';
+        ? `comparison-mode-btn px-3 py-1 bg-slate-800/80 text-white${borderClass}`
+        : `comparison-mode-btn px-3 py-1 bg-slate-950/40 text-slate-400 hover:text-white hover:bg-slate-800/70${borderClass}`;
     }
   });
 
-  controls.innerHTML = items.map(item => {
-    const isHidden = hiddenIds.has(item.id);
-    return `
-      <button data-comparison-toggle="${item.id}" class="px-2.5 py-1 rounded-full border text-[9px] font-bold transition ${isHidden ? 'bg-slate-950/40 border-slate-800/80 text-slate-500 line-through hover:text-slate-300' : 'bg-slate-800/70 border-slate-700/70 text-slate-300 hover:border-brand-blue/35 hover:text-white'}">
-        ${getComparisonChipLabel(item.name)}
-      </button>
-    `;
-  }).join('');
+  if (mode === 'member') {
+    controls.innerHTML = getTeamFilterOptions().map(option => {
+      const count = option.id === 'all' ? dashboardData.members.length : getTeamMemberCount(option.id);
+      const isActive = state.memberTeamFilter === option.id;
+      return `
+        <button data-member-team-filter="${option.id}" class="px-2.5 py-1 rounded-full border text-[9px] font-bold transition ${isActive ? 'bg-brand-blue/15 border-brand-blue/35 text-brand-cyan' : 'bg-slate-800/70 border-slate-700/70 text-slate-300 hover:border-brand-blue/35 hover:text-white'}">
+          ${option.name}<span class="ml-1 text-[8px] text-slate-500">${count}</span>
+        </button>
+      `;
+    }).join('');
+  } else {
+    controls.innerHTML = items.map(item => {
+      const isHidden = hiddenIds.has(item.id);
+      return `
+        <button data-comparison-toggle="${item.id}" class="px-2.5 py-1 rounded-full border text-[9px] font-bold transition ${isHidden ? 'bg-slate-950/40 border-slate-800/80 text-slate-500 line-through hover:text-slate-300' : 'bg-slate-800/70 border-slate-700/70 text-slate-300 hover:border-brand-blue/35 hover:text-white'}">
+          ${getComparisonChipLabel(item.name)}
+        </button>
+      `;
+    }).join('');
+  }
 
   if (visibleItems.length === 0) {
     matrix.innerHTML = `
@@ -838,8 +912,8 @@ function renderTeamFunnelComparisonMatrix() {
   const labelWidth = 118;
   const columnWidth = 144;
   const overallFunnel = sumFunnelItems(items);
-  const stickyLabelClass = 'sticky left-0 z-50 bg-[#020617] border-r border-slate-800/80';
-  const stickyOverallClass = 'sticky z-40 bg-[#020617] border-r border-slate-800/80';
+  const stickyLabelClass = 'sticky left-0 z-50 bg-[#202b3f] border-r border-slate-700/80';
+  const stickyOverallClass = 'sticky z-40 bg-[#202b3f] border-r border-slate-700/80';
   const overallHeaderCell = `
     <div class="${stickyOverallClass} team-funnel-compare-col border-l border-slate-800/70 p-2" style="left: ${labelWidth}px;">
       <h5 class="text-xs font-bold text-white truncate">全体</h5>
@@ -849,7 +923,7 @@ function renderTeamFunnelComparisonMatrix() {
 
   const headerCells = visibleItems.map(item => {
     return `
-      <div class="team-funnel-compare-col border-l border-slate-800/70 bg-slate-950/20 p-2">
+      <div class="team-funnel-compare-col border-l border-slate-700/70 bg-slate-800/30 p-2">
         <div class="flex items-start justify-between gap-2">
           <button class="min-w-0 text-left group cursor-default">
             <h5 class="text-xs font-bold text-white truncate">${item.name}</h5>
@@ -893,7 +967,7 @@ function renderTeamFunnelComparisonMatrix() {
               <strong class="text-[10.5px] text-slate-300 font-extrabold">${overallMetric.target.toLocaleString()}</strong>
             </span>
           </div>
-          <div class="mt-1 w-full bg-slate-800/60 rounded-md h-3.5 relative flex items-center overflow-hidden border border-slate-800">
+          <div class="mt-1 w-full bg-slate-700/70 rounded-md h-3.5 relative flex items-center overflow-hidden border border-slate-600/70">
             <div class="bg-gradient-to-r ${overallClasses.bar} h-full rounded-l-lg opacity-85" style="width: ${Math.min(overallActualRate, 100)}%"></div>
             <span class="absolute left-2 text-[8px] font-bold text-white drop-shadow">${overallActualRate.toFixed(1)}%</span>
             <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(overallTargetRate, 100)}%" title="目標全体比: ${overallTargetRate.toFixed(1)}%"></div>
@@ -912,7 +986,7 @@ function renderTeamFunnelComparisonMatrix() {
       const overallTargetRate = regTarget > 0 ? (metric.target / regTarget) * 100 : 0;
 
       return `
-        <div class="border-l border-t border-slate-800/60 p-1.5 bg-slate-950/20">
+        <div class="border-l border-t border-slate-700/60 p-1.5 bg-slate-800/25">
           <div class="w-full text-left">
             <div class="flex items-center justify-between gap-1">
               <span class="text-[9px] text-slate-400 font-semibold truncate">
@@ -921,7 +995,7 @@ function renderTeamFunnelComparisonMatrix() {
                 <strong class="text-[10.5px] text-slate-300 font-extrabold">${metric.target.toLocaleString()}</strong>
               </span>
             </div>
-            <div class="mt-1 w-full bg-slate-800/60 rounded-md h-3.5 relative flex items-center overflow-hidden border border-slate-800">
+            <div class="mt-1 w-full bg-slate-700/70 rounded-md h-3.5 relative flex items-center overflow-hidden border border-slate-600/70">
               <div class="bg-gradient-to-r ${classes.bar} h-full rounded-l-lg opacity-85" style="width: ${Math.min(overallActualRate, 100)}%"></div>
               <span class="absolute left-2 text-[8px] font-bold text-white drop-shadow">${overallActualRate.toFixed(1)}%</span>
               <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(overallTargetRate, 100)}%" title="目標全体比: ${overallTargetRate.toFixed(1)}%"></div>
@@ -933,14 +1007,14 @@ function renderTeamFunnelComparisonMatrix() {
 
     const isSortedTransition = state.funnelComparisonSort?.stageKey === stage.key && state.funnelComparisonSort?.type === 'transition';
     const transitionLabelCell = `
-      <button data-comparison-sort-stage="${stage.key}" data-comparison-sort-type="transition" class="${stickyLabelClass} border-t border-slate-800/70 p-1.5 flex items-center justify-between text-left group hover:bg-slate-900/80 transition w-full h-full min-h-[28px]">
-        <div class="flex items-center gap-1.5">
-          <span class="w-5 h-5 rounded-lg bg-slate-900/80 border border-slate-800/80 flex items-center justify-center flex-shrink-0">
-            <i data-lucide="arrow-down-up" class="w-3 h-3 text-slate-400"></i>
+      <button data-comparison-sort-stage="${stage.key}" data-comparison-sort-type="transition" class="${stickyLabelClass} funnel-transition-label-cell border-t border-slate-800/70 px-1.5 py-0.5 flex items-center justify-between text-left group hover:bg-slate-900/80 transition w-full h-full min-h-[20px]">
+        <div class="flex items-center gap-1">
+          <span class="w-3.5 h-3.5 rounded bg-slate-900/80 border border-slate-700/80 flex items-center justify-center flex-shrink-0">
+            <i data-lucide="arrow-down-up" class="w-2.5 h-2.5 text-slate-400"></i>
           </span>
-          <span class="text-[9.5px] font-extrabold text-slate-400 group-hover:text-white transition">プロセス移行率</span>
+          <span class="text-[8.5px] font-extrabold text-slate-300 group-hover:text-white transition">プロセス移行率</span>
         </div>
-        <i data-lucide="${isSortedTransition && state.funnelComparisonSort.direction === 'asc' ? 'arrow-up-wide-narrow' : 'arrow-down-wide-narrow'}" class="w-3.5 h-3.5 ${isSortedTransition ? 'text-brand-cyan opacity-100' : 'text-slate-500 opacity-0 group-hover:opacity-100'} transition"></i>
+        <i data-lucide="${isSortedTransition && state.funnelComparisonSort.direction === 'asc' ? 'arrow-up-wide-narrow' : 'arrow-down-wide-narrow'}" class="w-3 h-3 ${isSortedTransition ? 'text-brand-cyan opacity-100' : 'text-slate-500 opacity-0 group-hover:opacity-100'} transition"></i>
       </button>
     `;
 
@@ -961,20 +1035,20 @@ function renderTeamFunnelComparisonMatrix() {
             : 'bg-rose-400';
         const isStageExpanded = state.expandedStages?.[stage.key] || false;
         return `
-          <div class="${stickyOverallClass} border-l border-t border-slate-800/60 p-1.5 ${isWeakTransition ? 'bg-rose-950' : ''} flex flex-col justify-start gap-0.5" style="left: ${labelWidth}px;">
-            <button onclick="toggleComparisonStageActions('${stage.key}', this)" data-action-stage="${stage.key}" class="w-full text-left py-0.5 hover:text-brand-cyan transition flex items-center justify-between gap-2 group">
+          <div class="${stickyOverallClass} funnel-transition-cell ${isWeakTransition ? 'is-weak bg-rose-950' : ''} border-l border-t border-slate-800/60 px-1.5 py-0.5 flex flex-col justify-center gap-0.5" style="left: ${labelWidth}px;">
+            <button onclick="toggleComparisonStageActions('${stage.key}', this)" data-action-stage="${stage.key}" class="w-full text-left py-0 hover:text-brand-cyan transition flex items-center justify-between gap-2 group leading-none">
               <div class="flex items-center gap-1.5 min-w-0">
                 <div class="min-w-0">
-                  <span class="text-[9.5px] whitespace-nowrap text-slate-200 group-hover:text-white transition">
+                  <span class="text-[8.5px] whitespace-nowrap text-slate-200 group-hover:text-white transition">
                     <strong>${transitionRate.toFixed(1)}%</strong>
                     <span class="text-slate-600">/</span>
                     <span class="text-slate-400">${targetTransitionRate.toFixed(1)}%</span>
                   </span>
                 </div>
               </div>
-              <i data-lucide="chevron-down" class="process-action-chevron w-3.5 h-3.5 text-slate-500 transition-transform group-hover:text-brand-cyan ${isStageExpanded ? 'rotate-180' : ''}"></i>
+              <i data-lucide="chevron-down" class="process-action-chevron w-3 h-3 text-slate-500 transition-transform group-hover:text-brand-cyan ${isStageExpanded ? 'rotate-180' : ''}"></i>
             </button>
-            <div class="mt-0.5 w-full bg-slate-800/60 rounded-full h-1 relative overflow-hidden">
+            <div class="w-full bg-slate-800/60 rounded-full h-0.5 relative overflow-hidden">
               <div class="h-full rounded-full ${transitionBarClass}" style="width: ${Math.min(transitionRate, 100)}%"></div>
             </div>
           </div>
@@ -996,7 +1070,7 @@ function renderTeamFunnelComparisonMatrix() {
             : 'bg-rose-400';
         const isStageExpanded = state.expandedStages?.[stage.key] || false;
         const panelId = `team-compare-${mode}-${item.id}-${stage.key}-actions`;
-        const actionItems = getProcessActionChecks(stage.key, fData, 'team');
+        const actionItems = getProcessActionChecks(stage.key, fData, mode === 'member' ? 'member' : 'team');
         const actionPanel = `
           <div id="${panelId}" class="process-action-panel ${isStageExpanded ? '' : 'hidden'} mt-2 space-y-2 border-l border-slate-800/80 pl-2">
             ${actionItems.map(action => {
@@ -1029,20 +1103,20 @@ function renderTeamFunnelComparisonMatrix() {
           </div>
         `;
         return `
-          <div class="border-l border-t border-slate-800/60 p-1.5 ${isWeakTransition ? 'bg-rose-500/10' : 'bg-slate-950/30'} flex flex-col justify-start gap-0.5">
-            <button onclick="toggleComparisonStageActions('${stage.key}', this)" data-action-stage="${stage.key}" class="w-full text-left py-0.5 hover:text-brand-cyan transition flex items-center justify-between gap-2 group">
+          <div class="funnel-transition-cell ${isWeakTransition ? 'is-weak bg-rose-500/10' : 'bg-slate-950/30'} border-l border-t border-slate-800/60 px-1.5 py-0.5 flex flex-col justify-center gap-0.5">
+            <button onclick="toggleComparisonStageActions('${stage.key}', this)" data-action-stage="${stage.key}" class="w-full text-left py-0 hover:text-brand-cyan transition flex items-center justify-between gap-2 group leading-none">
               <div class="flex items-center gap-1.5 min-w-0">
                 <div class="min-w-0">
-                  <span class="text-[9.5px] whitespace-nowrap text-slate-200 group-hover:text-white transition">
+                  <span class="text-[8.5px] whitespace-nowrap text-slate-200 group-hover:text-white transition">
                     <strong>${transitionRate.toFixed(1)}%</strong>
                     <span class="text-slate-600">/</span>
                     <span class="text-slate-400">${targetTransitionRate.toFixed(1)}%</span>
                   </span>
                 </div>
               </div>
-              <i data-lucide="chevron-down" class="process-action-chevron w-3.5 h-3.5 text-slate-500 transition-transform group-hover:text-brand-cyan ${isStageExpanded ? 'rotate-180' : ''}"></i>
+              <i data-lucide="chevron-down" class="process-action-chevron w-3 h-3 text-slate-500 transition-transform group-hover:text-brand-cyan ${isStageExpanded ? 'rotate-180' : ''}"></i>
             </button>
-            <div class="mt-0.5 w-full bg-slate-800/60 rounded-full h-1 relative overflow-hidden">
+            <div class="w-full bg-slate-800/60 rounded-full h-0.5 relative overflow-hidden">
               <div class="h-full rounded-full ${transitionBarClass}" style="width: ${Math.min(transitionRate, 100)}%"></div>
             </div>
             ${actionPanel}
@@ -1054,8 +1128,36 @@ function renderTeamFunnelComparisonMatrix() {
     return `${transitionRow}${labelCell}${overallStageCell}${cells}`;
   }).join('');
 
+  let footerRow = '';
+  if (mode === 'team') {
+    const leftFooterCell = `
+      <div class="${stickyLabelClass} border-t border-slate-800/70 p-2 flex items-center min-h-[34px]">
+        <p class="text-[9.5px] font-extrabold text-slate-400">個人詳細</p>
+      </div>
+    `;
+    const overallFooterCell = `
+      <div class="${stickyOverallClass} border-l border-t border-slate-800/60 p-2 flex items-center justify-center min-h-[34px]" style="left: ${labelWidth}px;">
+        <span class="text-slate-600">-</span>
+      </div>
+    `;
+    const itemFooterCells = visibleItems.map(item => {
+      const memberCount = getTeamMemberCount(item.id);
+      const disabledClass = memberCount > 0
+        ? 'bg-brand-blue/15 border-brand-blue/30 text-brand-cyan hover:text-white hover:bg-brand-blue/30'
+        : 'bg-slate-950/40 border-slate-800/80 text-slate-600 cursor-not-allowed';
+      return `
+        <div class="border-l border-t border-slate-800/60 p-1.5 bg-slate-950/20 flex items-center justify-center min-h-[34px]">
+          <button ${memberCount > 0 ? `onclick="openTeamMemberDetail('${item.id}')"` : 'disabled'} class="px-2 py-0.5 rounded-lg border text-[9px] font-bold transition shadow-sm flex items-center gap-1 ${disabledClass}" title="${memberCount > 0 ? `${item.name}の個人別ファネルを見る` : 'このチームの個人データは未登録です'}">
+            <span>このチームの詳細を見る</span>
+          </button>
+        </div>
+      `;
+    }).join('');
+    footerRow = `${leftFooterCell}${overallFooterCell}${itemFooterCells}`;
+  }
+
   matrix.innerHTML = `
-    <div class="inline-grid min-w-full rounded-xl border border-slate-800/80 bg-slate-900/30" style="grid-template-columns: ${labelWidth}px ${columnWidth}px repeat(${visibleItems.length}, ${columnWidth}px);">
+    <div class="inline-grid min-w-full rounded-xl border border-slate-700/80 bg-slate-800/35" style="grid-template-columns: ${labelWidth}px ${columnWidth}px repeat(${visibleItems.length}, ${columnWidth}px);">
       <div class="${stickyLabelClass} p-2">
         <p class="text-xs font-bold text-slate-200">比較指標</p>
         <p class="text-[8.5px] text-slate-500 mt-1">工程名は左固定</p>
@@ -1063,6 +1165,7 @@ function renderTeamFunnelComparisonMatrix() {
       ${overallHeaderCell}
       ${headerCells}
       ${stageRows}
+      ${footerRow}
     </div>
   `;
 
@@ -1104,6 +1207,9 @@ function toggleTeamComparisonVisibility(itemId) {
 
 function showAllTeamsInComparison() {
   const mode = state.funnelComparisonMode || 'team';
+  if (mode === 'member') {
+    state.memberTeamFilter = 'all';
+  }
   state.hiddenComparisonItemsByMode[mode] = [];
   if (mode === 'team') {
     state.hiddenComparisonTeams = [];
@@ -1113,8 +1219,30 @@ function showAllTeamsInComparison() {
 
 function setFunnelComparisonMode(mode) {
   state.funnelComparisonMode = mode;
+  if (mode !== 'member') {
+    state.memberTeamFilter = 'all';
+  }
   renderTeamFunnelComparisonMatrix();
 }
+
+function setMemberTeamFilter(teamId) {
+  state.memberTeamFilter = teamId || 'all';
+  state.hiddenComparisonItemsByMode.member = [];
+  renderTeamFunnelComparisonMatrix();
+}
+
+window.openTeamMemberDetail = function(teamId) {
+  state.funnelComparisonMode = 'member';
+  state.memberTeamFilter = teamId || 'all';
+  state.hiddenComparisonItemsByMode.member = [];
+  renderTeamFunnelComparisonMatrix();
+
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  const mainScrollArea = document.getElementById('mainScrollArea');
+  if (mainScrollArea) {
+    mainScrollArea.scrollTo({ top: 0, left: mainScrollArea.scrollLeft, behavior: 'smooth' });
+  }
+};
 
 function sortComparisonByStage(stageKey, type = 'metric') {
   const current = state.funnelComparisonSort || {};
@@ -1127,6 +1255,7 @@ function sortComparisonByStage(stageKey, type = 'metric') {
 window.toggleTeamComparisonVisibility = toggleTeamComparisonVisibility;
 window.showAllTeamsInComparison = showAllTeamsInComparison;
 window.setFunnelComparisonMode = setFunnelComparisonMode;
+window.setMemberTeamFilter = setMemberTeamFilter;
 window.sortComparisonByStage = sortComparisonByStage;
 
 function renderFunnelAnalysis(fData, stepsContainerId, bottleneckContainerId, scope = 'overall') {

@@ -14,8 +14,8 @@
         extend: {
           colors: {
             brand: {
-              navy: '#0a0f1d',
-              dark: '#111827',
+              navy: '#182235',
+              dark: '#243044',
               blue: '#3b82f6',
               emerald: '#10b981',
               purple: '#8b5cf6',
@@ -29,7 +29,7 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
-  <link rel="stylesheet" href="style.css?v=2.5.1">
+  <link rel="stylesheet" href="style.css?v=2.5.2">
 </head>
 <body class="h-full bg-brand-navy text-slate-100 flex overflow-hidden">
 
@@ -118,11 +118,12 @@
                 </button>
                 <div id="teamComparisonVisibilityControls" class="flex flex-wrap justify-start gap-1.5"></div>
               </div>
-              <div class="flex justify-end gap-1.5 text-[10px] font-bold lg:ml-4 flex-shrink-0">
-                <button data-comparison-mode="team" id="comparison-mode-team" class="comparison-mode-btn px-3 py-1 rounded-lg bg-slate-800/80 border border-slate-700/70 text-white">チーム</button>
-                <button data-comparison-mode="prefecture" id="comparison-mode-prefecture" class="comparison-mode-btn px-3 py-1 rounded-lg bg-slate-950/40 border border-slate-800/80 text-slate-400 hover:text-white hover:border-brand-blue/35">都道府県</button>
-                <button data-comparison-mode="area" id="comparison-mode-area" class="comparison-mode-btn px-3 py-1 rounded-lg bg-slate-950/40 border border-slate-800/80 text-slate-400 hover:text-white hover:border-brand-blue/35">エリア</button>
-                <button data-comparison-mode="age" id="comparison-mode-age" class="comparison-mode-btn px-3 py-1 rounded-lg bg-slate-950/40 border border-slate-800/80 text-slate-400 hover:text-white hover:border-brand-blue/35">年齢</button>
+              <div class="inline-flex justify-end text-[10px] font-bold lg:ml-4 flex-shrink-0 rounded-md overflow-hidden border border-slate-700/80">
+                <button data-comparison-mode="team" id="comparison-mode-team" class="comparison-mode-btn px-3 py-1 bg-slate-800/80 text-white border-r border-slate-700/80">チーム</button>
+                <button data-comparison-mode="member" id="comparison-mode-member" class="comparison-mode-btn px-3 py-1 bg-slate-950/40 text-slate-400 hover:text-white hover:bg-slate-800/70 border-r border-slate-700/80">個人</button>
+                <button data-comparison-mode="area" id="comparison-mode-area" class="comparison-mode-btn px-3 py-1 bg-slate-950/40 text-slate-400 hover:text-white hover:bg-slate-800/70 border-r border-slate-700/80">エリア</button>
+                <button data-comparison-mode="prefecture" id="comparison-mode-prefecture" class="comparison-mode-btn px-3 py-1 bg-slate-950/40 text-slate-400 hover:text-white hover:bg-slate-800/70 border-r border-slate-700/80">都道府県</button>
+                <button data-comparison-mode="age" id="comparison-mode-age" class="comparison-mode-btn px-3 py-1 bg-slate-950/40 text-slate-400 hover:text-white hover:bg-slate-800/70">年齢</button>
               </div>
             </div>
             <div id="teamFunnelComparisonMatrix" class="team-funnel-compare-scroll overflow-x-auto pb-1"></div>
@@ -201,6 +202,6 @@
 
   <script src="jpmap.min.js?v=2.5.1"></script>
   <script src="data.js?v=2.5.1"></script>
-  <script src="app.js?v=2.5.25"></script>
+  <script src="app.js?v=2.5.27"></script>
 </body>
 </html>
