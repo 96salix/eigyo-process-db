@@ -136,36 +136,79 @@
         <div class="grid grid-cols-1 xl:grid-cols-4 gap-5" id="revenueKpiGrid"></div>
 
         <section class="grid grid-cols-1 xl:grid-cols-5 gap-6">
+          <!-- 左側: 売上進捗積み上げ棒グラフ -->
           <div class="xl:col-span-3 glass-panel rounded-2xl p-6">
             <div class="flex items-start justify-between gap-4 mb-6">
               <div>
                 <h3 class="text-base font-bold text-white">売上進捗</h3>
-                <p class="text-[10px] text-slate-400 mt-0.5">年度累計の目標、実績、先行予測を比較します。</p>
+                <p class="text-[10px] text-slate-400 mt-0.5">受注日ベースで当月売上の積み上げ推移を確認します。</p>
               </div>
               <span class="px-2 py-0.5 rounded-full bg-brand-emerald/10 border border-brand-emerald/20 text-brand-emerald text-[9px] font-bold">Revenue</span>
             </div>
             <div id="revenueProgressChart" class="h-80"></div>
           </div>
 
-          <div class="xl:col-span-2 glass-panel rounded-2xl p-6">
-            <div class="mb-5">
-              <h3 class="text-base font-bold text-white">チーム別売上進捗</h3>
-              <p class="text-[10px] text-slate-400 mt-0.5">決定数を売上換算し、目標比を一覧化します。</p>
+          <!-- 右側: 平均単価 & 失注理由を縦に集約 -->
+          <div class="xl:col-span-2 space-y-4">
+            <div class="glass-panel rounded-2xl p-5">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="text-xs font-bold text-white">平均単価</h3>
+                <span class="text-[9px] text-slate-400">紹介手数料・決定年収</span>
+              </div>
+              <div id="unitPriceMiniChart" class="h-44"></div>
             </div>
-            <div id="teamRevenueList" class="space-y-3"></div>
+            <div class="glass-panel rounded-2xl p-5">
+              <h3 class="text-xs font-bold text-white mb-1">失注・辞退理由</h3>
+              <p class="text-[9px] text-slate-400 mb-3">売上未達の直接要因（件数）</p>
+              <div id="lossReasonList" class="space-y-2"></div>
+            </div>
           </div>
         </section>
 
-        <section class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          <div class="glass-panel rounded-2xl p-6">
-            <h3 class="text-base font-bold text-white mb-1">平均単価</h3>
-            <p class="text-[10px] text-slate-400 mb-5">平均紹介手数料と決定年収の推移です。</p>
-            <div id="unitPriceMiniChart" class="h-64"></div>
+        <!-- 新設: 売上詳細比較マトリクス -->
+        <section class="glass-panel rounded-2xl p-5">
+          <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-3 mb-4">
+            <div>
+              <h3 class="text-base font-bold text-white">売上詳細比較マトリクス</h3>
+              <p class="text-[10px] text-slate-400 mt-0.5">組織・個人・エリアの売上KPIと着地予測を一覧比較・ソートします。</p>
+            </div>
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <div class="inline-flex rounded-md overflow-hidden border border-slate-700/80 text-[10px] font-bold">
+                <button onclick="switchRevenueMode('team')" id="rev-mode-team" class="rev-mode-btn px-3 py-1 bg-slate-800 text-white border-r border-slate-700/80 transition">チーム別</button>
+                <button onclick="switchRevenueMode('member')" id="rev-mode-member" class="rev-mode-btn px-3 py-1 bg-slate-950/40 text-slate-400 hover:text-white hover:bg-slate-800/70 border-r border-slate-700/80 transition">個人別</button>
+                <button onclick="switchRevenueMode('area')" id="rev-mode-area" class="rev-mode-btn px-3 py-1 bg-slate-950/40 text-slate-400 hover:text-white hover:bg-slate-800/70 transition">エリア別</button>
+              </div>
+            </div>
           </div>
-          <div class="glass-panel rounded-2xl p-6">
-            <h3 class="text-base font-bold text-white mb-1">失注・辞退理由</h3>
-            <p class="text-[10px] text-slate-400 mb-5">売上未達の直接要因を件数で確認します。</p>
-            <div id="lossReasonList" class="space-y-3"></div>
+
+          <!-- フィルターとトグルチップの表示エリア -->
+          <div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-3 min-w-0">
+            <button onclick="resetRevenueFilter()" class="px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700/70 text-[9px] font-bold text-slate-300 hover:text-white hover:border-brand-blue/35 transition flex-shrink-0">
+              全表示リセット
+            </button>
+            <div id="revenueComparisonVisibilityControls" class="flex flex-wrap justify-start gap-1.5 overflow-x-auto py-0.5"></div>
+          </div>
+
+          <!-- マトリクス テーブル本体 -->
+          <div class="overflow-x-auto w-full border border-slate-800/80 rounded-xl bg-slate-950/20">
+            <table class="w-full text-[10.5px] border-collapse" id="revenueComparisonTable">
+              <thead>
+                <tr class="bg-slate-900/60 border-b border-slate-800/80 text-slate-400 font-bold">
+                  <th class="p-3 text-left min-w-[120px] font-bold text-slate-300">対象</th>
+                  <th class="p-3 text-right cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('target')">目標売上 <span id="sort-icon-target"></span></th>
+                  <th class="p-3 text-right cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('actual')">確定売上 <span id="sort-icon-actual"></span></th>
+                  <th class="p-3 text-center cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('pct')">達成率 <span id="sort-icon-pct"></span></th>
+                  <th class="p-3 text-right cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('pipeline')">見込売上 <span id="sort-icon-pipeline"></span></th>
+                  <th class="p-3 text-right cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('forecast')">着地予測 <span id="sort-icon-forecast"></span></th>
+                  <th class="p-3 text-center cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('forecastPct')">予測達成率 <span id="sort-icon-forecastPct"></span></th>
+                  <th class="p-3 text-center cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('placements')">決定数 <span id="sort-icon-placements"></span></th>
+                  <th class="p-3 text-right cursor-pointer hover:bg-slate-800/40 select-none transition" onclick="sortRevenue('avgComm')">平均単価 <span id="sort-icon-avgComm"></span></th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/40 text-slate-300" id="revenueComparisonBody">
+                <!-- JSで動的描画 -->
+              </tbody>
+            </table>
           </div>
         </section>
       </div>
@@ -201,7 +244,7 @@
   </main>
 
   <script src="jpmap.min.js?v=2.5.1"></script>
-  <script src="data.js?v=2.5.1"></script>
-  <script src="app.js?v=2.5.27"></script>
+  <script src="data.js?v=2.5.2"></script>
+  <script src="app.js?v=2.5.28"></script>
 </body>
 </html>

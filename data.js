@@ -52,6 +52,35 @@ const dashboardData = {
     forecast: [2450, 2750, 2680, 3350, 2900, 3125, 3350] // 先行指標に基づく予測
   },
 
+  // 当月の日次受注明細 (金額単位: 万円)
+  // status: confirmed = 受注済み, document_collected = 求職者書類回収済み
+  salesOrders: [
+    { id: "order-001", orderDate: "2026-05-01", candidate: "中村 あゆみ", member: "佐藤 拓海", status: "confirmed", commission: 150 },
+    { id: "order-002", orderDate: "2026-05-02", candidate: "石井 洋介", member: "高橋 健太", status: "confirmed", commission: 120 },
+    { id: "order-003", orderDate: "2026-05-03", candidate: "山口 玲子", member: "鈴木 美咲", status: "confirmed", commission: 130 },
+    { id: "order-004", orderDate: "2026-05-05", candidate: "中島 翔太", member: "田中 葵", status: "confirmed", commission: 110 },
+    { id: "order-005", orderDate: "2026-05-06", candidate: "斉藤 陽子", member: "佐藤 拓海", status: "confirmed", commission: 150 },
+    { id: "order-006", orderDate: "2026-05-07", candidate: "岡田 健二", member: "高橋 健太", status: "confirmed", commission: 95 },
+    { id: "order-007", orderDate: "2026-05-08", candidate: "山内 美紀", member: "鈴木 美咲", status: "confirmed", commission: 140 },
+    { id: "order-008", orderDate: "2026-05-10", candidate: "三浦 大輔", member: "田中 葵", status: "confirmed", commission: 125 },
+    { id: "order-009", orderDate: "2026-05-11", candidate: "清水 雅子", member: "佐藤 拓海", status: "confirmed", commission: 105 },
+    { id: "order-010", orderDate: "2026-05-12", candidate: "千葉 翼", member: "高橋 健太", status: "confirmed", commission: 165 },
+    { id: "order-011", orderDate: "2026-05-13", candidate: "渡辺 恵", member: "鈴木 美咲", status: "confirmed", commission: 115 },
+    { id: "order-012", orderDate: "2026-05-14", candidate: "小林 健太", member: "佐藤 拓海", status: "confirmed", commission: 130 },
+    { id: "order-013", orderDate: "2026-05-15", candidate: "木村 恵美", member: "高橋 健太", status: "confirmed", commission: 100 },
+    { id: "order-014", orderDate: "2026-05-16", candidate: "渡辺 直樹", member: "田中 葵", status: "confirmed", commission: 150 },
+    { id: "order-015", orderDate: "2026-05-17", candidate: "伊藤 香織", member: "佐藤 拓海", status: "confirmed", commission: 125 },
+    { id: "order-016", orderDate: "2026-05-18", candidate: "遠藤 光", member: "高橋 健太", status: "confirmed", commission: 140 },
+    { id: "order-017", orderDate: "2026-05-19", candidate: "森田 彩", member: "鈴木 美咲", status: "confirmed", commission: 90 },
+    { id: "order-018", orderDate: "2026-05-21", candidate: "橋本 亮", member: "佐藤 拓海", status: "confirmed", commission: 145 },
+    { id: "order-019", orderDate: "2026-05-22", candidate: "井上 由美", member: "渡辺 裕介", status: "confirmed", commission: 90 },
+    { id: "doc-001", orderDate: "2026-05-09", candidate: "松本 明子", member: "渡辺 裕介", status: "document_collected", commission: 120 },
+    { id: "doc-002", orderDate: "2026-05-13", candidate: "藤田 航", member: "田中 葵", status: "document_collected", commission: 105 },
+    { id: "doc-003", orderDate: "2026-05-17", candidate: "長谷川 真理", member: "高橋 健太", status: "document_collected", commission: 135 },
+    { id: "doc-004", orderDate: "2026-05-20", candidate: "村上 悠", member: "佐藤 拓海", status: "document_collected", commission: 115 },
+    { id: "doc-005", orderDate: "2026-05-22", candidate: "大野 智子", member: "鈴木 美咲", status: "document_collected", commission: 150 }
+  ],
+
   // チーム全体の週次行動量 (直近週: 5月第3週)
   weeklyActivity: {
     categories: ["新規架電", "面談実施", "求人提案", "推薦提出", "面接設定"],

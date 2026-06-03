@@ -14,6 +14,7 @@ const state = {
   hiddenComparisonTeams: [],
   hiddenComparisonItemsByMode: {},
   funnelComparisonMode: 'team',
+  funnelOverallScope: 'all',
   funnelComparisonSort: { stageKey: null, type: 'metric', direction: 'desc' },
   memberTeamFilter: 'all',
   leaderboardMetric: 'calls',
@@ -22,6 +23,11 @@ const state = {
   // 市場調査用サブタブと選択エリア
   currentMarketSubTab: 'pref',
   selectedAreaId: 'kanto',
+  // 売上進捗マトリクス状態
+  revenueComparisonMode: 'team',
+  revenueComparisonSort: { key: 'pct', direction: 'desc' },
+  revenueHiddenItemsByMode: { team: [], member: [], area: [] },
+  revenueMemberTeamFilter: 'all',
   // 先行指標シミュレータのデフォルト値 (9段階プロセス)
   simulator: {
     calls: 450,
@@ -39,6 +45,7 @@ const state = {
 // 保持するApexChartsのインスタンス
 let charts = {
   revenueTrend: null,
+  revenueProgress: null,
   weeklyActivity: null,
   scatterCorrelation: null,
   radarDiagnostic: null,
@@ -117,6 +124,13 @@ function initEventListeners() {
     if (showAllBtn) {
       e.preventDefault();
       showAllTeamsInComparison();
+      return;
+    }
+
+    const overallScopeBtn = e.target.closest('[data-funnel-overall-scope]');
+    if (overallScopeBtn) {
+      e.preventDefault();
+      setFunnelOverallScope(overallScopeBtn.dataset.funnelOverallScope);
       return;
     }
 
@@ -911,12 +925,23 @@ function renderTeamFunnelComparisonMatrix() {
 
   const labelWidth = 118;
   const columnWidth = 144;
-  const overallFunnel = sumFunnelItems(items);
+  const overallScope = state.funnelOverallScope || 'all';
+  const overallItems = overallScope === 'visible' ? visibleItems : items;
+  const overallFunnel = sumFunnelItems(overallItems);
+  const scopeButtonClass = (scope) => scope === overallScope
+    ? 'bg-brand-blue/20 text-brand-cyan border-brand-blue/40'
+    : 'bg-slate-950/30 text-slate-400 border-slate-700/70 hover:text-white hover:bg-slate-800/70';
   const stickyLabelClass = 'sticky left-0 z-50 bg-[#202b3f] border-r border-slate-700/80';
   const stickyOverallClass = 'sticky z-40 bg-[#202b3f] border-r border-slate-700/80';
   const overallHeaderCell = `
     <div class="${stickyOverallClass} team-funnel-compare-col border-l border-slate-800/70 p-2" style="left: ${labelWidth}px;">
-      <h5 class="text-xs font-bold text-white truncate">全体</h5>
+      <div class="flex items-center justify-between gap-1">
+        <h5 class="text-xs font-bold text-white truncate">全体</h5>
+        <div class="inline-flex rounded overflow-hidden border border-slate-700/70 flex-shrink-0">
+          <button data-funnel-overall-scope="all" class="px-1 py-0.5 border-r border-slate-700/70 text-[8px] font-extrabold leading-none transition ${scopeButtonClass('all')}">全データ</button>
+          <button data-funnel-overall-scope="visible" class="px-1 py-0.5 text-[8px] font-extrabold leading-none transition ${scopeButtonClass('visible')}">表示のみ</button>
+        </div>
+      </div>
       <p class="text-[9px] text-slate-500 truncate mt-0.5">${getFunnelComparisonModeLabel(mode)}合算</p>
     </div>
   `;
@@ -1228,6 +1253,11 @@ function setFunnelComparisonMode(mode) {
 function setMemberTeamFilter(teamId) {
   state.memberTeamFilter = teamId || 'all';
   state.hiddenComparisonItemsByMode.member = [];
+  renderTeamFunnelComparisonMatrix();
+}
+
+function setFunnelOverallScope(scope) {
+  state.funnelOverallScope = scope === 'visible' ? 'visible' : 'all';
   renderTeamFunnelComparisonMatrix();
 }
 
@@ -1729,9 +1759,349 @@ function renderRevenueProgress() {
   }).join('');
 
   renderRevenueProgressChart();
-  renderTeamRevenueList();
+  renderSalesComparisonMatrix();
   renderUnitPriceMiniChart();
   renderLossReasonList();
+}
+
+function getExpectedRevenue(type, id) {
+  const orders = dashboardData.salesOrders || [];
+  const pipelineOrders = orders.filter(o => o.status === 'document_collected');
+
+  if (type === 'member') {
+    const m = dashboardData.members.find(member => member.id === id);
+    const mName = m ? m.name : '';
+    return pipelineOrders.filter(o => o.member === mName).reduce((sum, o) => sum + o.commission, 0);
+  }
+
+  if (type === 'team') {
+    const teamMembers = dashboardData.members.filter(member => MEMBER_TEAM_MAP[member.id] === id).map(m => m.name);
+    let pipeline = pipelineOrders.filter(o => teamMembers.includes(o.member)).reduce((sum, o) => sum + o.commission, 0);
+    if (pipeline === 0) {
+      const team = dashboardData.teamsData[id];
+      if (team) {
+        pipeline = Math.max(0, (team.funnel.setups.actual - team.funnel.placements.actual) * 0.4 * 125);
+      }
+    }
+    return pipeline;
+  }
+
+  if (type === 'area') {
+    let teamIds = [];
+    if (id === 'kanto') teamIds = ['group1', 'group2', 'group3', 'kanagawa', 'saitama', 'chiba'];
+    else if (id === 'kansai') teamIds = ['osaka'];
+    else if (id === 'tokai') teamIds = ['nagoya'];
+
+    let pipeline = 0;
+    teamIds.forEach(tId => {
+      const teamMembers = dashboardData.members.filter(member => MEMBER_TEAM_MAP[member.id] === tId).map(m => m.name);
+      let teamPipeline = pipelineOrders.filter(o => teamMembers.includes(o.member)).reduce((sum, o) => sum + o.commission, 0);
+      if (teamPipeline === 0) {
+        const team = dashboardData.teamsData[tId];
+        if (team) {
+          teamPipeline = Math.max(0, (team.funnel.setups.actual - team.funnel.placements.actual) * 0.4 * 125);
+        }
+      }
+      pipeline += teamPipeline;
+    });
+    return pipeline;
+  }
+  return 0;
+}
+
+function getRevenueComparisonItems(mode = state.revenueComparisonMode) {
+  const avgCommission = 125;
+
+  if (mode === 'member') {
+    return dashboardData.members
+      .filter(member => state.revenueMemberTeamFilter === 'all' || MEMBER_TEAM_MAP[member.id] === state.revenueMemberTeamFilter)
+      .map(member => {
+        const actual = member.metrics.revenue / 10000; // revenue is in yen, convert to ten-thousand yen
+        const target = 4 * avgCommission; // target placements is 4, target revenue is 4 * 125 = 500
+        const pipeline = getExpectedRevenue('member', member.id);
+        const forecast = actual + pipeline;
+        return {
+          id: member.id,
+          name: member.name,
+          caption: member.role,
+          target: target,
+          actual: actual,
+          pct: target > 0 ? (actual / target) * 100 : 0,
+          pipeline: pipeline,
+          forecast: forecast,
+          forecastPct: target > 0 ? (forecast / target) * 100 : 0,
+          placements: member.metrics.placements,
+          avgComm: avgCommission
+        };
+      });
+  }
+
+  if (mode === 'area') {
+    const teams = dashboardData.teamsData;
+    const areas = [
+      {
+        id: 'kanto',
+        name: '関東',
+        caption: '東京・神奈川・埼玉・千葉',
+        teamIds: ['group1', 'group2', 'group3', 'kanagawa', 'saitama', 'chiba']
+      },
+      { id: 'kansai', name: '関西', caption: '大阪', teamIds: ['osaka'] },
+      { id: 'tokai', name: '東海', caption: '愛知', teamIds: ['nagoya'] }
+    ];
+
+    return areas.map(area => {
+      let target = 0;
+      let actual = 0;
+      let placements = 0;
+
+      area.teamIds.forEach(tId => {
+        const team = teams[tId];
+        if (team) {
+          target += team.funnel.placements.target * avgCommission;
+          actual += team.funnel.placements.actual * avgCommission;
+          placements += team.funnel.placements.actual;
+        }
+      });
+
+      const pipeline = getExpectedRevenue('area', area.id);
+      const forecast = actual + pipeline;
+
+      return {
+        id: area.id,
+        name: area.name,
+        caption: area.caption,
+        target: target,
+        actual: actual,
+        pct: target > 0 ? (actual / target) * 100 : 0,
+        pipeline: pipeline,
+        forecast: forecast,
+        forecastPct: target > 0 ? (forecast / target) * 100 : 0,
+        placements: placements,
+        avgComm: avgCommission
+      };
+    });
+  }
+
+  // Default: team mode
+  return Object.entries(dashboardData.teamsData).map(([id, team]) => {
+    const target = team.funnel.placements.target * avgCommission;
+    const actual = team.funnel.placements.actual * avgCommission;
+    const pipeline = getExpectedRevenue('team', id);
+    const forecast = actual + pipeline;
+
+    return {
+      id: id,
+      name: team.name,
+      caption: team.leader,
+      target: target,
+      actual: actual,
+      pct: target > 0 ? (actual / target) * 100 : 0,
+      pipeline: pipeline,
+      forecast: forecast,
+      forecastPct: target > 0 ? (forecast / target) * 100 : 0,
+      placements: team.funnel.placements.actual,
+      avgComm: avgCommission
+    };
+  });
+}
+
+function renderSalesComparisonMatrix() {
+  const tableBody = document.getElementById('revenueComparisonBody');
+  const controls = document.getElementById('revenueComparisonVisibilityControls');
+  if (!tableBody || !controls) return;
+
+  const mode = state.revenueComparisonMode || 'team';
+  const items = getRevenueComparisonItems(mode);
+  const hiddenIds = new Set(state.revenueHiddenItemsByMode[mode] || []);
+  let visibleItems = items.filter(item => !hiddenIds.has(item.id));
+
+  // Sorting
+  const sortState = state.revenueComparisonSort || { key: 'pct', direction: 'desc' };
+  if (sortState.key) {
+    const direction = sortState.direction === 'asc' ? 1 : -1;
+    visibleItems.sort((a, b) => {
+      const valA = a[sortState.key] || 0;
+      const valB = b[sortState.key] || 0;
+      return (valA - valB) * direction;
+    });
+  }
+
+  // Update button active states for modes
+  ['team', 'member', 'area'].forEach(m => {
+    const btn = document.getElementById(`rev-mode-${m}`);
+    if (btn) {
+      if (m === mode) {
+        btn.className = 'rev-mode-btn px-3 py-1 bg-slate-800 text-white border-r border-slate-700/80 transition';
+      } else {
+        btn.className = 'rev-mode-btn px-3 py-1 bg-slate-950/40 text-slate-400 hover:text-white hover:bg-slate-800/70 border-r border-slate-700/80 transition';
+      }
+    }
+  });
+
+  // Render headers sort indicator
+  const keys = ['target', 'actual', 'pct', 'pipeline', 'forecast', 'forecastPct', 'placements', 'avgComm'];
+  keys.forEach(k => {
+    const indicatorEl = document.getElementById(`sort-icon-${k}`);
+    if (indicatorEl) {
+      if (sortState.key === k) {
+        indicatorEl.textContent = sortState.direction === 'asc' ? ' ▲' : ' ▼';
+        indicatorEl.className = 'text-[9px] text-brand-cyan ml-0.5';
+      } else {
+        indicatorEl.textContent = '';
+      }
+    }
+  });
+
+  // Controls (Visibility Chips)
+  if (mode === 'member') {
+    // Show filter by Team
+    controls.innerHTML = getTeamFilterOptions().map(option => {
+      const count = option.id === 'all' ? dashboardData.members.length : getTeamMemberCount(option.id);
+      const isActive = state.revenueMemberTeamFilter === option.id;
+      return `
+        <button onclick="setRevenueMemberTeamFilter('${option.id}')" class="px-2.5 py-1 rounded-full border text-[9px] font-bold transition ${isActive ? 'bg-brand-blue/15 border-brand-blue/35 text-brand-cyan' : 'bg-slate-800/70 border-slate-700/70 text-slate-300 hover:border-brand-blue/35 hover:text-white'}">
+          ${option.name}<span class="ml-1 text-[8px] text-slate-500">${count}</span>
+        </button>
+      `;
+    }).join('');
+  } else {
+    // Show show/hide chips for teams or areas
+    controls.innerHTML = items.map(item => {
+      const isHidden = hiddenIds.has(item.id);
+      return `
+        <button onclick="toggleRevenueItem('${item.id}')" class="px-2.5 py-1 rounded-full border text-[9px] font-bold transition ${isHidden ? 'bg-slate-950/40 border-slate-800/80 text-slate-500 line-through hover:text-slate-300' : 'bg-slate-800/70 border-slate-700/70 text-slate-300 hover:border-brand-blue/35 hover:text-white'}">
+          ${getComparisonChipLabel(item.name)}
+        </button>
+      `;
+    }).join('');
+  }
+
+  // Render Table Body rows
+  if (visibleItems.length === 0) {
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="9" class="p-6 text-center text-slate-500">
+          表示中の項目がありません。
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tableBody.innerHTML = visibleItems.map(item => {
+    const pctColor = item.pct >= 100 ? 'text-emerald-400 font-bold' : item.pct >= 80 ? 'text-brand-amber font-bold' : 'text-rose-400 font-bold';
+    const forePctColor = item.forecastPct >= 100 ? 'text-emerald-400 font-bold' : item.forecastPct >= 80 ? 'text-brand-amber font-bold' : 'text-rose-400 font-bold';
+    const actualText = `${Math.round(item.actual).toLocaleString()}万`;
+    const targetText = `${Math.round(item.target).toLocaleString()}万`;
+    const pipelineText = `${Math.round(item.pipeline).toLocaleString()}万`;
+    const forecastText = `${Math.round(item.forecast).toLocaleString()}万`;
+    const avgCommText = `${Math.round(item.avgComm).toLocaleString()}万`;
+
+    return `
+      <tr class="hover:bg-slate-900/40 border-b border-slate-800/20 transition">
+        <td class="p-3 text-left font-semibold text-white">
+          <div class="truncate max-w-[150px]">${item.name}</div>
+          <div class="text-[9px] text-slate-500 truncate max-w-[150px] mt-0.5 font-normal">${item.caption}</div>
+        </td>
+        <td class="p-3 text-right text-slate-300 font-semibold">${targetText}</td>
+        <td class="p-3 text-right text-slate-100 font-bold">${actualText}</td>
+        <td class="p-3 text-center">
+          <div class="flex flex-col items-center gap-1">
+            <span class="${pctColor}">${item.pct.toFixed(1)}%</span>
+            <div class="w-16 bg-slate-800 rounded-full h-1 overflow-hidden">
+              <div class="h-full rounded-full bg-gradient-to-r from-brand-blue to-brand-cyan" style="width: ${Math.min(item.pct, 100)}%"></div>
+            </div>
+          </div>
+        </td>
+        <td class="p-3 text-right text-slate-300">${pipelineText}</td>
+        <td class="p-3 text-right text-slate-100 font-bold">${forecastText}</td>
+        <td class="p-3 text-center">
+          <span class="${forePctColor}">${item.forecastPct.toFixed(1)}%</span>
+        </td>
+        <td class="p-3 text-center text-slate-300 font-medium">${item.placements}件</td>
+        <td class="p-3 text-right text-slate-400">${avgCommText}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+window.switchRevenueMode = function(mode) {
+  state.revenueComparisonMode = mode;
+  renderSalesComparisonMatrix();
+};
+
+window.sortRevenue = function(key) {
+  const current = state.revenueComparisonSort || { key: 'pct', direction: 'desc' };
+  if (current.key === key) {
+    current.direction = current.direction === 'desc' ? 'asc' : 'desc';
+  } else {
+    current.key = key;
+    current.direction = 'desc';
+  }
+  state.revenueComparisonSort = current;
+  renderSalesComparisonMatrix();
+};
+
+window.toggleRevenueItem = function(id) {
+  const mode = state.revenueComparisonMode || 'team';
+  if (!state.revenueHiddenItemsByMode[mode]) {
+    state.revenueHiddenItemsByMode[mode] = [];
+  }
+  const index = state.revenueHiddenItemsByMode[mode].indexOf(id);
+  if (index === -1) {
+    state.revenueHiddenItemsByMode[mode].push(id);
+  } else {
+    state.revenueHiddenItemsByMode[mode].splice(index, 1);
+  }
+  renderSalesComparisonMatrix();
+};
+
+window.setRevenueMemberTeamFilter = function(teamId) {
+  state.revenueMemberTeamFilter = teamId;
+  renderSalesComparisonMatrix();
+};
+
+window.resetRevenueFilter = function() {
+  const mode = state.revenueComparisonMode || 'team';
+  state.revenueHiddenItemsByMode[mode] = [];
+  state.revenueMemberTeamFilter = 'all';
+  renderSalesComparisonMatrix();
+};
+
+function getDailyRevenueStackData() {
+  const orders = dashboardData.salesOrders || [];
+  if (orders.length === 0) {
+    return {
+      labels: [],
+      confirmed: [],
+      documentCollected: [],
+      confirmedTotal: 0,
+      documentCollectedTotal: 0
+    };
+  }
+
+  const maxDay = Math.max(...orders.map(order => Number(order.orderDate.split('-')[2])));
+  let confirmedTotal = 0;
+  let documentCollectedTotal = 0;
+  const labels = [];
+  const confirmed = [];
+  const documentCollected = [];
+
+  for (let day = 1; day <= maxDay; day += 1) {
+    const dayOrders = orders.filter(order => Number(order.orderDate.split('-')[2]) === day);
+    dayOrders.forEach(order => {
+      if (order.status === 'document_collected') {
+        documentCollectedTotal += order.commission;
+      } else {
+        confirmedTotal += order.commission;
+      }
+    });
+    labels.push(`5/${day}`);
+    confirmed.push(confirmedTotal);
+    documentCollected.push(documentCollectedTotal);
+  }
+
+  return { labels, confirmed, documentCollected, confirmedTotal, documentCollectedTotal };
 }
 
 function renderRevenueProgressChart() {
@@ -1742,26 +2112,57 @@ function renderRevenueProgressChart() {
     charts.revenueProgress.destroy();
   }
 
-  const cumulativeTarget = getCumulativeArray(dashboardData.monthlyTrend.target);
-  const cumulativeActual = getCumulativeArray(dashboardData.monthlyTrend.actual);
-  const cumulativeForecast = getCumulativeArray(dashboardData.monthlyTrend.forecast);
+  const dailyRevenue = getDailyRevenueStackData();
 
   charts.revenueProgress = new ApexCharts(el, {
     series: [
-      { name: '年度累計目標', data: cumulativeTarget },
-      { name: '年度累計実績', data: cumulativeActual },
-      { name: '年度累計予測', data: cumulativeForecast }
+      { name: '受注済み', data: dailyRevenue.confirmed },
+      { name: '書類回収済み', data: dailyRevenue.documentCollected }
     ],
-    chart: { type: 'line', height: 320, background: 'transparent', toolbar: { show: false }, foreColor: '#94a3b8' },
-    colors: ['#60a5fa', '#10b981', '#f59e0b'],
-    stroke: { width: [3, 4, 3], curve: 'smooth', dashArray: [5, 0, 4] },
-    fill: { type: 'gradient', gradient: { shade: 'dark', opacityFrom: 0.24, opacityTo: 0.04 } },
-    labels: dashboardData.monthlyTrend.months,
-    markers: { size: [0, 5, 0] },
-    grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 4 },
-    yaxis: { labels: { formatter: value => `${value.toLocaleString()}万` } },
-    legend: { labels: { colors: '#94a3b8' } },
-    tooltip: { theme: 'dark', y: { formatter: value => `${value?.toLocaleString()}万円 (年度累計)` } }
+    chart: {
+      type: 'bar',
+      height: 320,
+      stacked: true,
+      background: 'transparent',
+      toolbar: { show: false },
+      foreColor: '#cbd5e1'
+    },
+    colors: ['#10b981', '#f59e0b'],
+    plotOptions: {
+      bar: {
+        horizontal: false,
+        columnWidth: '68%',
+        borderRadius: 3,
+        borderRadiusApplication: 'end'
+      }
+    },
+    dataLabels: { enabled: false },
+    xaxis: {
+      categories: dailyRevenue.labels,
+      axisBorder: { show: false },
+      axisTicks: { show: false },
+      labels: {
+        rotate: 0,
+        style: { fontSize: '10px' }
+      }
+    },
+    yaxis: {
+      labels: { formatter: value => `${Math.round(value).toLocaleString()}万` }
+    },
+    grid: { borderColor: 'rgba(203,213,225,0.12)', strokeDashArray: 4 },
+    legend: {
+      position: 'top',
+      horizontalAlign: 'right',
+      fontSize: '11px',
+      labels: { colors: '#cbd5e1' },
+      markers: { radius: 3 }
+    },
+    tooltip: {
+      theme: 'dark',
+      shared: true,
+      intersect: false,
+      y: { formatter: value => `${value.toLocaleString()}万円 (当月累計)` }
+    }
   });
   charts.revenueProgress.render();
 }
@@ -1815,7 +2216,7 @@ function renderUnitPriceMiniChart() {
       { name: '紹介手数料', data: dashboardData.unitPriceTrend.avgCommission },
       { name: '決定年収', data: dashboardData.unitPriceTrend.avgSalary }
     ],
-    chart: { type: 'line', height: 260, background: 'transparent', toolbar: { show: false }, foreColor: '#94a3b8' },
+    chart: { type: 'line', height: 140, background: 'transparent', toolbar: { show: false }, foreColor: '#94a3b8' },
     colors: ['#06b6d4', '#8b5cf6'],
     stroke: { width: 3, curve: 'smooth' },
     labels: dashboardData.unitPriceTrend.months,
