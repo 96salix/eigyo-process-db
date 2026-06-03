@@ -55,30 +55,63 @@ const dashboardData = {
   // 当月の日次受注明細 (金額単位: 万円)
   // status: confirmed = 受注済み, document_collected = 求職者書類回収済み
   salesOrders: [
-    { id: "order-001", orderDate: "2026-05-01", candidate: "中村 あゆみ", member: "佐藤 拓海", status: "confirmed", commission: 150 },
-    { id: "order-002", orderDate: "2026-05-02", candidate: "石井 洋介", member: "高橋 健太", status: "confirmed", commission: 120 },
-    { id: "order-003", orderDate: "2026-05-03", candidate: "山口 玲子", member: "鈴木 美咲", status: "confirmed", commission: 130 },
-    { id: "order-004", orderDate: "2026-05-05", candidate: "中島 翔太", member: "田中 葵", status: "confirmed", commission: 110 },
-    { id: "order-005", orderDate: "2026-05-06", candidate: "斉藤 陽子", member: "佐藤 拓海", status: "confirmed", commission: 150 },
-    { id: "order-006", orderDate: "2026-05-07", candidate: "岡田 健二", member: "高橋 健太", status: "confirmed", commission: 95 },
-    { id: "order-007", orderDate: "2026-05-08", candidate: "山内 美紀", member: "鈴木 美咲", status: "confirmed", commission: 140 },
-    { id: "order-008", orderDate: "2026-05-10", candidate: "三浦 大輔", member: "田中 葵", status: "confirmed", commission: 125 },
-    { id: "order-009", orderDate: "2026-05-11", candidate: "清水 雅子", member: "佐藤 拓海", status: "confirmed", commission: 105 },
-    { id: "order-010", orderDate: "2026-05-12", candidate: "千葉 翼", member: "高橋 健太", status: "confirmed", commission: 165 },
-    { id: "order-011", orderDate: "2026-05-13", candidate: "渡辺 恵", member: "鈴木 美咲", status: "confirmed", commission: 115 },
-    { id: "order-012", orderDate: "2026-05-14", candidate: "小林 健太", member: "佐藤 拓海", status: "confirmed", commission: 130 },
-    { id: "order-013", orderDate: "2026-05-15", candidate: "木村 恵美", member: "高橋 健太", status: "confirmed", commission: 100 },
-    { id: "order-014", orderDate: "2026-05-16", candidate: "渡辺 直樹", member: "田中 葵", status: "confirmed", commission: 150 },
-    { id: "order-015", orderDate: "2026-05-17", candidate: "伊藤 香織", member: "佐藤 拓海", status: "confirmed", commission: 125 },
-    { id: "order-016", orderDate: "2026-05-18", candidate: "遠藤 光", member: "高橋 健太", status: "confirmed", commission: 140 },
-    { id: "order-017", orderDate: "2026-05-19", candidate: "森田 彩", member: "鈴木 美咲", status: "confirmed", commission: 90 },
-    { id: "order-018", orderDate: "2026-05-21", candidate: "橋本 亮", member: "佐藤 拓海", status: "confirmed", commission: 145 },
-    { id: "order-019", orderDate: "2026-05-22", candidate: "井上 由美", member: "渡辺 裕介", status: "confirmed", commission: 90 },
-    { id: "doc-001", orderDate: "2026-05-09", candidate: "松本 明子", member: "渡辺 裕介", status: "document_collected", commission: 120 },
-    { id: "doc-002", orderDate: "2026-05-13", candidate: "藤田 航", member: "田中 葵", status: "document_collected", commission: 105 },
-    { id: "doc-003", orderDate: "2026-05-17", candidate: "長谷川 真理", member: "高橋 健太", status: "document_collected", commission: 135 },
-    { id: "doc-004", orderDate: "2026-05-20", candidate: "村上 悠", member: "佐藤 拓海", status: "document_collected", commission: 115 },
-    { id: "doc-005", orderDate: "2026-05-22", candidate: "大野 智子", member: "鈴木 美咲", status: "document_collected", commission: 150 }
+    // 4月の確定売上実績 (前月比較用: 合計 2900万円)
+    { id: "order-401", orderDate: "2026-04-01", candidate: "鈴木 隆", member: "佐藤 拓海", status: "confirmed", commission: 140, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "order-402", orderDate: "2026-04-02", candidate: "高橋 さくら", member: "高橋 健太", status: "confirmed", commission: 120, jobType: "ドラッグ(調剤有)", contractType: "正社員 (一般職)" },
+    { id: "order-403", orderDate: "2026-04-04", candidate: "木村 太一", member: "鈴木 美咲", status: "confirmed", commission: 150, jobType: "病院・クリニック", contractType: "正社員 (専門職)" },
+    { id: "order-404", orderDate: "2026-04-05", candidate: "渡辺 俊", member: "田中 葵", status: "confirmed", commission: 125, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "order-405", orderDate: "2026-04-07", candidate: "佐藤 恵子", member: "佐藤 拓海", status: "confirmed", commission: 160, jobType: "ドラッグ(OTCのみ)", contractType: "正社員 (一般職)" },
+    { id: "order-406", orderDate: "2026-04-09", candidate: "田中 健二", member: "高橋 健太", status: "confirmed", commission: 110, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "order-407", orderDate: "2026-04-10", candidate: "伊藤 洋子", member: "鈴木 美咲", status: "confirmed", commission: 135, jobType: "ドラッグ(調剤有)", contractType: "正社員 (専門職)" },
+    { id: "order-408", orderDate: "2026-04-12", candidate: "山本 翔", member: "田中 葵", status: "confirmed", commission: 125, jobType: "病院・クリニック", contractType: "正社員 (一般職)" },
+    { id: "order-409", orderDate: "2026-04-14", candidate: "中村 由美", member: "佐藤 拓海", status: "confirmed", commission: 180, jobType: "調剤薬局", contractType: "正社員 (管理職)" },
+    { id: "order-410", orderDate: "2026-04-15", candidate: "小林 理恵", member: "高橋 健太", status: "confirmed", commission: 150, jobType: "ドラッグ(調剤有)", contractType: "正社員 (管理職)" },
+    { id: "order-411", orderDate: "2026-04-17", candidate: "加藤 浩", member: "鈴木 美咲", status: "confirmed", commission: 120, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "order-412", orderDate: "2026-04-18", candidate: "吉田 聡", member: "渡辺 裕介", status: "confirmed", commission: 170, jobType: "病院・クリニック", contractType: "正社員 (一般職)" },
+    { id: "order-413", orderDate: "2026-04-20", candidate: "山田 花子", member: "佐藤 拓海", status: "confirmed", commission: 130, jobType: "ドラッグ(OTCのみ)", contractType: "正社員 (専門職)" },
+    { id: "order-414", orderDate: "2026-04-22", candidate: "佐々木 翼", member: "高橋 健太", status: "confirmed", commission: 165, jobType: "調剤薬局", contractType: "正社員 (管理職)" },
+    { id: "order-415", orderDate: "2026-04-24", candidate: "松本 潤", member: "鈴木 美咲", status: "confirmed", commission: 125, jobType: "ドラッグ(調剤有)", contractType: "正社員 (一般職)" },
+    { id: "order-416", orderDate: "2026-04-25", candidate: "井上 芳雄", member: "渡辺 裕介", status: "confirmed", commission: 200, jobType: "病院・クリニック", contractType: "正社員 (管理職)" },
+    { id: "order-417", orderDate: "2026-04-27", candidate: "林 真理子", member: "佐藤 拓海", status: "confirmed", commission: 145, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "order-418", orderDate: "2026-04-28", candidate: "清水 翔太", member: "高橋 健太", status: "confirmed", commission: 150, jobType: "ドラッグ(調剤有)", contractType: "正社員 (専門職)" },
+    { id: "order-419", orderDate: "2026-04-29", candidate: "阿部 寛", member: "渡辺 裕介", status: "confirmed", commission: 180, jobType: "病院・クリニック", contractType: "正社員 (一般職)" },
+    { id: "order-420", orderDate: "2026-04-30", candidate: "森 公美子", member: "鈴木 美咲", status: "confirmed", commission: 130, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+
+    // 5月の実績・見込データ (当月: 確定2375万円 + 見込720万円)
+    { id: "order-001", orderDate: "2026-05-01", candidate: "中村 あゆみ", member: "佐藤 拓海", status: "confirmed", commission: 150, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "order-002", orderDate: "2026-05-02", candidate: "石井 洋介", member: "高橋 健太", status: "confirmed", commission: 120, jobType: "ドラッグ(調剤有)", contractType: "正社員 (一般職)" },
+    { id: "order-003", orderDate: "2026-05-03", candidate: "山口 玲子", member: "鈴木 美咲", status: "confirmed", commission: 130, jobType: "病院・クリニック", contractType: "正社員 (専門職)" },
+    { id: "order-004", orderDate: "2026-05-05", candidate: "中島 翔太", member: "田中 葵", status: "confirmed", commission: 110, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "order-005", orderDate: "2026-05-06", candidate: "斉藤 陽子", member: "佐藤 拓海", status: "confirmed", commission: 150, jobType: "ドラッグ(OTCのみ)", contractType: "正社員 (一般職)" },
+    { id: "order-006", orderDate: "2026-05-07", candidate: "岡田 健二", member: "高橋 健太", status: "confirmed", commission: 95, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "order-007", orderDate: "2026-05-08", candidate: "山内 美紀", member: "鈴木 美咲", status: "confirmed", commission: 140, jobType: "ドラッグ(調剤有)", contractType: "正社員 (専門職)" },
+    { id: "order-008", orderDate: "2026-05-10", candidate: "三浦 大輔", member: "田中 葵", status: "confirmed", commission: 125, jobType: "病院・クリニック", contractType: "正社員 (一般職)" },
+    { id: "order-009", orderDate: "2026-05-11", candidate: "清水 雅子", member: "佐藤 拓海", status: "confirmed", commission: 105, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "order-010", orderDate: "2026-05-12", candidate: "千葉 翼", member: "高橋 健太", status: "confirmed", commission: 165, jobType: "ドラッグ(調剤有)", contractType: "正社員 (管理職)" },
+    { id: "order-011", orderDate: "2026-05-13", candidate: "渡辺 恵", member: "鈴木 美咲", status: "confirmed", commission: 115, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "order-012", orderDate: "2026-05-14", candidate: "小林 健太", member: "佐藤 拓海", status: "confirmed", commission: 130, jobType: "病院・クリニック", contractType: "正社員 (一般職)" },
+    { id: "order-013", orderDate: "2026-05-15", candidate: "木村 恵美", member: "高橋 健太", status: "confirmed", commission: 100, jobType: "ドラッグ(OTCのみ)", contractType: "正社員 (専門職)" },
+    { id: "order-014", orderDate: "2026-05-16", candidate: "渡辺 直樹", member: "田中 葵", status: "confirmed", commission: 150, jobType: "調剤薬局", contractType: "正社員 (管理職)" },
+    { id: "order-015", orderDate: "2026-05-17", candidate: "伊藤 香織", member: "佐藤 拓海", status: "confirmed", commission: 125, jobType: "ドラッグ(調剤有)", contractType: "正社員 (一般職)" },
+    { id: "order-016", orderDate: "2026-05-18", candidate: "遠藤 光", member: "高橋 健太", status: "confirmed", commission: 140, jobType: "病院・クリニック", contractType: "正社員 (一般職)" },
+    { id: "order-017", orderDate: "2026-05-19", candidate: "森田 彩", member: "鈴木 美咲", status: "confirmed", commission: 90, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "order-018", orderDate: "2026-05-21", candidate: "橋本 亮", member: "佐藤 拓海", status: "confirmed", commission: 145, jobType: "ドラッグ(調剤有)", contractType: "正社員 (専門職)" },
+    { id: "order-019", orderDate: "2026-05-22", candidate: "井上 由美", member: "渡辺 裕介", status: "confirmed", commission: 90, jobType: "病院・クリニック", contractType: "正社員 (一般職)" },
+    { id: "doc-001", orderDate: "2026-05-09", candidate: "松本 明子", member: "渡辺 裕介", status: "document_collected", rank: "A", commission: 120, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "doc-002", orderDate: "2026-05-13", candidate: "藤田 航", member: "田中 葵", status: "document_collected", rank: "B", commission: 105, jobType: "ドラッグ(調剤有)", contractType: "正社員 (専門職)" },
+    { id: "doc-003", orderDate: "2026-05-17", candidate: "長谷川 真理", member: "高橋 健太", status: "document_collected", rank: "A", commission: 135, jobType: "病院・クリニック", contractType: "正社員 (一般職)" },
+    { id: "doc-004", orderDate: "2026-05-20", candidate: "村上 悠", member: "佐藤 拓海", status: "document_collected", rank: "C", commission: 115, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "doc-005", orderDate: "2026-05-22", candidate: "大野 智子", member: "鈴木 美咲", status: "document_collected", rank: "B", commission: 150, jobType: "ドラッグ(OTCのみ)", contractType: "正社員 (一般職)" },
+
+    // 6月の予測/パイプラインデータ (翌月: 確定0万円 + 見込3350万円)
+    { id: "doc-601", orderDate: "2026-06-01", candidate: "斉藤 陽子(Y)", member: "佐藤 拓海", status: "document_collected", rank: "A", commission: 165, jobType: "調剤薬局", contractType: "正社員 (管理職)" },
+    { id: "doc-602", orderDate: "2026-06-03", candidate: "岡田 健二(Y)", member: "高橋 健太", status: "document_collected", rank: "A", commission: 180, jobType: "ドラッグ(調剤有)", contractType: "正社員 (管理職)" },
+    { id: "doc-603", orderDate: "2026-06-05", candidate: "山内 美紀(Y)", member: "鈴木 美咲", status: "document_collected", rank: "B", commission: 144, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "doc-604", orderDate: "2026-06-08", candidate: "三浦 大輔(Y)", member: "田中 葵", status: "document_collected", rank: "B", commission: 156, jobType: "病院・クリニック", contractType: "正社員 (一般職)" },
+    { id: "doc-605", orderDate: "2026-06-11", candidate: "清水 雅子(Y)", member: "佐藤 拓海", status: "document_collected", rank: "C", commission: 135, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "doc-606", orderDate: "2026-06-15", candidate: "千葉 翼(Y)", member: "高橋 健太", status: "document_collected", rank: "C", commission: 245, jobType: "ドラッグ(調剤有)", contractType: "正社員 (一般職)" },
+    { id: "doc-607", orderDate: "2026-06-18", candidate: "渡辺 恵(Y)", member: "鈴木 美咲", status: "document_collected", rank: "C", commission: 150, jobType: "調剤薬局", contractType: "正社員 (一般職)" },
+    { id: "doc-608", orderDate: "2026-06-22", candidate: "入社 確定予定", member: "渡辺 裕介", status: "document_collected", rank: "A", commission: 220, jobType: "病院・クリニック", contractType: "正社員 (専門職)" }
   ],
 
   // チーム全体の週次行動量 (直近週: 5月第3週)
@@ -288,10 +321,10 @@ const dashboardData = {
     { name: '千葉',     data: [{ x: '調剤薬局', y: 3.1 }, { x: 'ドラッグ(調剤有)', y: 3.8 }, { x: 'ドラッグ(OTCのみ)', y: 2.9 }, { x: '病院・クリニック', y: 0.9 }] }
   ],
 
-  // 2. 雇用形態別成約売上比率 (ドーナツグラフ用)
+  // 2. 正社員区分別成約売上比率 (ドーナツグラフ用)
   contractTypes: {
-    labels: ["正社員 (常勤)", "パート (非常勤)", "契約社員・派遣", "スポット応援"],
-    values: [17100000, 3800000, 2150000, 700000] // 合計 2375万円
+    labels: ["正社員 (一般職)", "正社員 (専門職)", "正社員 (管理職)"],
+    values: [15200000, 6050000, 2500000] // 合計 2375万円
   },
 
   // 3. 平均紹介単価（決定年収）の推移 (過去6ヶ月)
@@ -574,9 +607,9 @@ const dashboardData = {
     hokkaido: { name: "北海道", ratio: 1.8, demand: 450, supply: 250, status: "seller-light", desc: "札幌中心部は求職者・求人のバランスが取れていますが、道東・道北エリア（旭川・釧路等）では慢性的な薬剤師不足が発生しています。特に冬季のスポット応援需要が活発です。", action: "道東・道北エリアの調剤薬局に対し、札幌市内や本州からの短期・週末スポット応援（往復交通費支給＋高時給）のパッケージ提案を推進してください。" },
     aomori: { name: "青森県", ratio: 2.8, demand: 180, supply: 64, status: "seller", desc: "八戸や弘前エリアを中心に求人過多が顕著。豪雪地帯の個人薬局では深刻な調剤員不足に悩まされています。", action: "U・Iターン希望者をターゲットとし、『引越し一時金全額支給』や『借り上げ社宅無料完備』を交渉材料に大手薬局の求人を優先提案してください。" },
     iwate: { name: "岩手県", ratio: 2.5, demand: 160, supply: 64, status: "seller", desc: "盛岡市内を除く北上・一関などの沿岸・内陸部で極度な薬剤師不足。採用の長期化が続いています。", action: "若手の求職者に対し、内陸エリアでの『年収650万円保証＋残業なし』の特別枠求人を積極的にぶつけて一発決定を狙いましょう。" },
-    miyagi: { name: "宮城県", ratio: 1.6, demand: 480, supply: 300, status: "seller-light", desc: "仙台市内は求職者が多く比較的安定していますが、石巻・大崎エリアなどでは調剤薬局の採用難が続いています。", action: "仙台市在住の求職者に対し、車通勤可能な石巻エリアでの『高単価パート（時給3,000円以上）』を提案し、成約を促進しましょう。" },
+    miyagi: { name: "宮城県", ratio: 1.6, demand: 480, supply: 300, status: "seller-light", desc: "仙台市内は求職者が多く比較的安定していますが、石巻・大崎エリアなどでは調剤薬局の採用難が続いています。", action: "仙台市在住の求職者に対し、車通勤可能な石巻エリアでの『時短勤務可能な正社員制度』を提案し、成約を促進しましょう。" },
     akita: { name: "秋田県", ratio: 3.2, demand: 160, supply: 50, status: "seller-extreme", desc: "全国で最も急速に高齢化が進むエリアであり、薬剤師の採用難易度は国内最高レベル。極度な超売り手市場です。", action: "企業に対しては、紹介手数料率の特別交渉（35%→40%）を強くプッシュ。求職者へは『完全週休3日制』『引越し費用＆支度金完全支給』を確約できる独占案件を提示します。" },
-    yamagata: { name: "山形県", ratio: 2.4, demand: 170, supply: 70, status: "seller", desc: "山形市内は均衡していますが、庄内地方（酒田・鶴岡）において慢性的な病院・薬局の人員不足が続いています。", action: "山形県内の薬局チェーンから『派遣・応援契約』を誘致し、山形市内から庄内エリアへの週末短期出張応援案件としてマッチングをかけます。" },
+    yamagata: { name: "山形県", ratio: 2.4, demand: 170, supply: 70, status: "seller", desc: "山形市内は均衡していますが、庄内地方（酒田・鶴岡）において慢性的な病院・薬局の人員不足が続いています。", action: "山形県内の薬局チェーンから『広域ラウンダー正社員契約』を誘致し、山形市内から庄内エリアへの出張対応型正社員としてマッチングをかけます。" },
     fukushima: { name: "福島県", ratio: 2.2, demand: 320, supply: 145, status: "seller", desc: "中通り（郡山・福島）は均衡傾向ですが、いわきエリアや浜通りにおける採用難易度は依然として極めて高い状況です。", action: "郡山市内からいわきエリアへ通勤（または高速代支給での移住）する求職者へ、通常より年収を100万円以上上乗せした『特別待遇枠』を打診します。" },
     ibaraki: { name: "茨城県", ratio: 2.3, demand: 420, supply: 182, status: "seller", desc: "つくば・水戸などの中心エリアは良好ですが、神栖や常陸大宮など、県境・沿岸部で極端な求人過多が発生しています。", action: "千葉・埼玉在住で通勤圏内の求職者に、『高速道路代支給』または『社宅完備』での特別勤務条件を交渉し、推薦を獲得してください。" },
     tochigi: { name: "栃木県", ratio: 2.1, demand: 290, supply: 138, status: "seller", desc: "宇都宮市周辺は充足しつつありますが、那須塩原や足利・佐野エリアなど郊外で薬剤師不足が続いています。", action: "宇都宮周辺の『年収アップ希望者』に対し、那須エリアなどの高年収店舗（年収600万円以上）への車通勤スキームを積極的に推奨します。" },
@@ -587,7 +620,7 @@ const dashboardData = {
     kanagawa: { name: "神奈川県", ratio: 0.9, demand: 1800, supply: 2000, status: "buyer", desc: "横浜・川崎エリアは求職者が豊富で採用難易度は低いですが、小田原や三浦半島などの郊外では採用難が生じています。", action: "横浜周辺でバッティングに悩む求職者に対し、小田原や秦野エリアの『高年収かつ管理薬剤師ポストが狙える優良薬局』を提案して誘導を図りましょう。" },
     niigata: { name: "新潟県", ratio: 1.7, demand: 290, supply: 170, status: "seller-light", desc: "新潟市内は充足していますが、長岡・上越エリアや佐渡などの離島において、病院や門前薬局の採用難が続いています。", action: "新潟市内の求職者に対し、長岡エリアでの『新幹線通勤手当全額支給』や『単身赴任手当付き』の特別好待遇求人を交渉して推薦します。" },
     toyama: { name: "富山県", ratio: 1.5, demand: 150, supply: 100, status: "seller-light", desc: "「くすりの富山」として製薬・調剤基盤が強いですが、大手チェーンの新規出店により、若手薬剤師の獲得競争が激化しています。", action: "製薬メーカーや卸からの転職（キャリアチェンジ）を希望する求職者へ、調剤未経験でも研修制度が整った大手薬局チェーンを優先提案します。" },
-    ishikawa: { name: "石川県", ratio: 1.4, demand: 180, supply: 128, status: "balance-light", desc: "金沢市内はほぼ均衡していますが、能登エリア等で急激な薬剤師不足が進んでおり、採用難が強まっています。", action: "能登エリアの薬局・病院から『応援薬剤師パッケージ』を受託し、金沢周辺在住のパート希望者に高時給でのアプローチを促進します。" },
+    ishikawa: { name: "石川県", ratio: 1.4, demand: 180, supply: 128, status: "balance-light", desc: "金沢市内はほぼ均衡していますが、能登エリア等で急激な薬剤師不足が進んでおり、採用難が強まっています。", action: "能登エリアの薬局・病院から『エリア限定正社員プログラム』を受託し、金沢周辺在住の若手正社員層にアプローチを促進します。" },
     fukui: { name: "福井県", ratio: 1.8, demand: 110, supply: 61, status: "seller-light", desc: "嶺北（福井市）は落ち着いていますが、嶺南（敦賀・小浜）エリアにおいて極端な薬剤師不足が生じています。", action: "滋賀や京都北部在住の求職者に対し、通勤可能な敦賀エリアでの『車通勤交通費全額支給＋年収600万円保証』案件を提案します。" },
     yamanashi: { name: "山梨県", ratio: 1.6, demand: 130, supply: 81, status: "seller-light", desc: "甲府市内は均衡していますが、富士吉田・都留エリアなど、郡内地方での採用が非常に長期化しています。", action: "八王子や多摩エリア在住の『年収アップ希望』求職者に、通勤圏内である上野原・大月周辺の『高待遇調剤薬局』を積極的に提案してください。" },
     nagano: { name: "長野県", ratio: 1.9, demand: 310, supply: 163, status: "seller-light", desc: "長野市・松本市は安定していますが、諏訪・飯田エリアにおいて薬剤師の不足傾向が非常に顕著です。", action: "諏訪・伊那エリアの地域薬局チェーンに対し、松本・塩尻周辺からの『通勤用高速道路代支給』を確約させ、求職者を推薦します。" },
@@ -602,7 +635,7 @@ const dashboardData = {
     nara: { name: "奈良県", ratio: 1.3, demand: 170, supply: 130, status: "balance-light", desc: "奈良市・生駒市周辺は大阪通勤圏として充足していますが、吉野エリアなどの南部において深刻な薬剤師不足です。", action: "大阪市内で買い手市場に直面している求職者に対し、奈良県南部の『週休2.5日・残業月3時間以下』のワークライフバランス特化求人を提案します。" },
     wakayama: { name: "和歌山県", ratio: 1.6, demand: 160, supply: 100, status: "seller-light", desc: "和歌山市周辺は比較的安定していますが、紀南エリア（田辺・新宮）において極端な薬剤師不足が生じています。", action: "大阪南部在住の求職者に対し、車通勤可能な紀北・紀中エリアの『管理薬剤師候補（年収650万円保証＋高速代全額支給）』を強く訴求します。" },
     tottori: { name: "鳥取県", ratio: 2.6, demand: 130, supply: 50, status: "seller", desc: "米子・鳥取エリアともに慢性的な薬剤師不足。大手チェーンから個人薬局まで、獲得競争が激化しています。", action: "Uターン・Iターン希望の若手薬剤師に対し、『赴任手当全額支給』に加え『月最大10万円の住宅補助』を出せる薬局を即時提示します。" },
-    shimane: { name: "島根県", ratio: 2.8, demand: 140, supply: 50, status: "seller", desc: "松江・出雲エリアは比較的落ち着いていますが、浜田・益田などの石見地方において極度な薬剤師不足が発生しています。", action: "石見エリアの調剤薬局チェーンと提携し、『時給4,200円以上の超高待遇派遣契約』を獲得。全国の登録者へ短期移住アプローチをかけます。" },
+    shimane: { name: "島根県", ratio: 2.8, demand: 140, supply: 50, status: "seller", desc: "松江・出雲エリアは比較的落ち着いていますが、浜田・益田などの石見地方において極度な薬剤師不足が発生しています。", action: "石見エリアの調剤薬局チェーンと提携し、『年収750万円以上の超高待遇正社員契約』を獲得。全国の登録者へ短期移住アプローチをかけます。" },
     okayama: { name: "岡山県", ratio: 1.4, demand: 320, supply: 228, status: "balance-light", desc: "岡山市内は薬学部が多くほぼ均衡。津山などの美作エリアや県北部において、人員獲得の難易度が上昇しています。", action: "岡山市内在住の求職者に対し、車通勤可能な津山周辺の『年収620万円保証・在宅対応有』の優良ドラッグ求人をアピールしてください。" },
     hiroshima: { name: "広島県", ratio: 1.3, demand: 520, supply: 400, status: "balance-light", desc: "広島市内はほぼ均衡していますが、三次・庄原などの北部山間エリアや呉・尾道周辺の沿岸部で薬剤師が不足しています。", action: "広島市内の求職者バッティングを避けるため、呉エリア周辺の『残薬管理や地域包括ケアに注力する地域密着薬局』を差別化提案します。" },
     yamaguchi: { name: "山口県", ratio: 1.8, demand: 220, supply: 122, status: "seller-light", desc: "下関・宇部周辺は落ち着いていますが、周南・岩国エリアや長門・萩周辺の北部において薬剤師不足が続いています。", action: "広島や北九州在住で通勤圏内の求職者に、『新幹線通勤可能』または『高速道路代完全支給』の好待遇店舗を積極的にマッチングします。" },
@@ -612,13 +645,67 @@ const dashboardData = {
     kochi: { name: "高知県", ratio: 2.9, demand: 150, supply: 51, status: "seller-extreme", desc: "高知市内を除く全県で急激な若手薬剤師の都市部流出が進んでおり、若手・中堅の市場価値が最高潮に達しています。", action: "若手の登録者に対し、高知の『管理薬剤師候補（年収680〜720万円確約）』の超優良独占案件を即時ぶつけ、他社に先んじて一発決定を狙います。" },
     fukuoka: { name: "福岡県", ratio: 1.1, demand: 1200, supply: 1090, status: "balance", desc: "福岡市・北九州市は薬学部が多く非常に充足しており、ほぼ均衡。筑後エリアや飯塚・直方などで不足が目立ちます。", action: "福岡市内での激しいバッティング競争を避け、筑後・筑豊エリアの『マイカー通勤可能・年収600万円以上・残業ゼロ』店舗へ求職者を誘導します。" },
     saga: { name: "佐賀県", ratio: 1.7, demand: 140, supply: 82, status: "seller-light", desc: "佐賀市内は福岡からの通勤圏として均衡していますが、唐津・伊万里エリアや武雄周辺で採用難易度が上昇しています。", action: "福岡西部に在住する『年収アップ希望者』に対し、西九州道で快適に通勤可能な唐津周辺の『年収630万円確約』求人を強く提案しましょう。" },
-    nagasaki: { name: "長崎県", ratio: 2.2, demand: 220, supply: 100, status: "seller", desc: "長崎市内は坂が多く通勤面での充足偏在がありますが、五島・対馬などの離島や佐世保・大村等で深刻な採用難です。", action: "離島・地方薬局チェーンから『時給4,500円以上の高待遇派遣・応援契約』を受託。全国のフットワークの軽い若手にアピールします。" },
+    nagasaki: { name: "長崎県", ratio: 2.2, demand: 220, supply: 100, status: "seller", desc: "長崎市内は坂が多く通勤面での充足偏在がありますが、五島・対馬などの離島や佐世保・大村等で深刻な採用難です。", action: "離島・地方薬局チェーンから『年収700万円以上の高待遇正社員契約』を受託。全国のフットワークの軽い若手にアピールします。" },
     kumamoto: { name: "熊本県", ratio: 1.8, demand: 290, supply: 161, status: "seller-light", desc: "熊本市内は半導体マネーによる薬局出店が進み競争激化。人吉・天草などの郊外や南部で深刻な薬剤師不足です。", action: "熊本市内の求職者に対し、車通勤可能な宇城・八代周辺の『管理薬剤師ポスト（年収650万円保証＋残業なし）』を積極的に推奨します。" },
     oita: { name: "大分県", ratio: 2.0, demand: 200, supply: 100, status: "seller", desc: "大分市内は均衡していますが、日田・中津エリアや佐伯などの南部沿岸部で急激な人員不足が発生しています。", action: "大分市内の調剤経験者に、『U・Iターン支援＋年収630万円』を条件に、中津エリアの『在宅特化ドラッグストア』を優先アプローチします。" },
     miyazaki: { name: "宮崎県", ratio: 2.4, demand: 170, supply: 70, status: "seller", desc: "宮崎市内は比較的安定していますが、延岡・日向エリアや都城・小林などの県南部において薬剤師が極端に不足しています。", action: "鹿児島や熊本在住で通勤圏内の求職者に、『通勤用高速道路代支給』または『社宅完備』での特別勤務条件を交渉し、推薦を獲得します。" },
     kagoshima: { name: "鹿児島県", ratio: 2.6, demand: 230, supply: 88, status: "seller", desc: "鹿児島市内は充足していますが、薩摩川内・鹿屋エリアや奄美・種子島などの離島・半島部において極度な薬剤師不足です。", action: "離島・地方の『地域密着型アットホーム薬局』を、地元志向の求職者や、福岡から『地域医療貢献・スローライフ移住』を希望する層へアプローチします。" },
-    okinawa: { name: "沖縄県", ratio: 1.5, demand: 180, supply: 120, status: "seller-light", desc: "那覇市周辺は移住希望者も含めて充足していますが、名護などの本島北部や宮古・石垣などの先島諸島で深刻な採用難です。", action: "全国の『リゾート移住・短期勤務希望』の登録者に対し、北部・離島店舗の『往復航空券支給＋家具家電付き社宅無料完備＋高時給』案件を提案します。" }
-  }
+    okinawa: { name: "沖縄県", ratio: 1.5, demand: 180, supply: 120, status: "seller-light", desc: "那覇市周辺は移住希望者も含めて充足していますが、名護などの本島北部や宮古・石垣などの先島諸島で深刻な採用難です。", action: "全国の『リゾート移住・短期勤務希望』の登録者に対し、北部・離島店舗 of the 『往復航空券支給＋家具家電付き社宅無料完備＋高時給』案件を提案します。" }
+  },
+  candidates: (() => {
+    const makeSeededRandom = (seed) => {
+      return () => {
+        let x = Math.sin(seed++) * 10000;
+        return x - Math.floor(x);
+      };
+    };
+    const rand = makeSeededRandom(12345);
+    const candidates = [];
+    const areas = ['関東', '関西', '東海'];
+    const ageGroups = ['20代', '30代', '40代', '50代以上'];
+    const jobTypes = ['調剤薬局', 'ドラッグ(調剤有)', 'ドラッグ(OTCのみ)', '病院・クリニック'];
+    const contractTypes = ['正社員 (一般職)', '正社員 (専門職)', '正社員 (管理職)'];
+    
+    for (let i = 0; i < 700; i++) {
+      const rArea = rand();
+      const area = rArea < 0.70 ? '関東' : (rArea < 0.85 ? '関西' : '東海');
+      
+      const rAge = rand();
+      const ageGroup = rAge < 0.24 ? '20代' : (rAge < 0.58 ? '30代' : (rAge < 0.83 ? '40代' : '50代以上'));
+      
+      const rJob = rand();
+      const jobType = rJob < 0.45 ? '調剤薬局' : (rJob < 0.75 ? 'ドラッグ(調剤有)' : (rJob < 0.90 ? 'ドラッグ(OTCのみ)' : '病院・クリニック'));
+      
+      const rContract = rand();
+      const contractType = rContract < 0.60 ? '正社員 (一般職)' : (rContract < 0.85 ? '正社員 (専門職)' : '正社員 (管理職)');
+      
+      let performanceModifier = 0.0;
+      if (ageGroup === '30代') performanceModifier += 0.08;
+      if (ageGroup === '50代以上') performanceModifier -= 0.12;
+      if (area === '関東') performanceModifier += 0.04;
+      if (jobType === '病院・クリニック') performanceModifier -= 0.06;
+      
+      const rStage = rand() - performanceModifier;
+      let maxStage = 0;
+      if (rStage < 0.07) maxStage = 6;
+      else if (rStage < 0.17) maxStage = 5;
+      else if (rStage < 0.38) maxStage = 4;
+      else if (rStage < 0.55) maxStage = 3;
+      else if (rStage < 0.70) maxStage = 2;
+      else if (rStage < 0.85) maxStage = 1;
+      else maxStage = 0;
+      
+      candidates.push({
+        id: `cand-${i}`,
+        area,
+        ageGroup,
+        jobType,
+        contractType,
+        maxStage
+      });
+    }
+    return candidates;
+  })()
 };
 
 

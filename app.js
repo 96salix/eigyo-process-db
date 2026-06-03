@@ -11,6 +11,8 @@ const state = {
   selectedPeriod: 'this-month',
   selectedTeam: 'group1',
   selectedMember: 'suzuki',
+  selectedRevenueMonth: '2026-05',
+  useWeightedPipeline: false,
   hiddenComparisonTeams: [],
   hiddenComparisonItemsByMode: {},
   funnelComparisonMode: 'team',
@@ -39,6 +41,14 @@ const state = {
     setup: 47,
     prep: 57,
     close: 40
+  },
+  // クロス集計用の状態
+  crossTab: {
+    rowAxis: 'area',
+    colAxis: 'ageGroup',
+    metric: 'rate_overall',
+    selectedRow: '関東',
+    selectedCol: '30代'
   }
 };
 
@@ -214,7 +224,7 @@ window.switchTab = function(tabId) {
   state.currentTab = tabId;
 
   // ナビゲーションボタンのアクティブクラス制御
-  const tabs = ['overview', 'funnel', 'correlation'];
+  const tabs = ['overview', 'funnel', 'correlation', 'cross'];
   tabs.forEach(t => {
     const btn = document.getElementById(`tab-btn-${t}`);
     const content = document.getElementById(`tab-content-${t}`);
@@ -264,7 +274,8 @@ function updatePageContext() {
   const titles = {
     overview: 'ファネル分析',
     funnel: '売上進捗',
-    correlation: '市況分析'
+    correlation: '市況分析',
+    cross: 'プロセスクロス集計分析'
   };
 
   const titleEl = document.getElementById('currentTabTitle');
@@ -500,6 +511,9 @@ function renderAll() {
   renderRevenueProgress();
   renderMarketOverview();
   setFunnelLayer(state.selectedFunnelLayer);
+  if (state.currentTab === 'cross') {
+    renderCrossTabulation();
+  }
 }
 
 const FUNNEL_STAGES = [
@@ -923,8 +937,8 @@ function renderTeamFunnelComparisonMatrix() {
     return;
   }
 
-  const labelWidth = 118;
-  const columnWidth = 144;
+  const labelWidth = 142;
+  const columnWidth = 173;
   const overallScope = state.funnelOverallScope || 'all';
   const overallItems = overallScope === 'visible' ? visibleItems : items;
   const overallFunnel = sumFunnelItems(overallItems);
@@ -1717,23 +1731,73 @@ function renderRevenueProgress() {
   const kpiGrid = document.getElementById('revenueKpiGrid');
   if (!kpiGrid) return;
 
-  const revenue = dashboardData.kpis.revenue;
-  const offers = dashboardData.kpis.offers;
-  const cumulativeTarget = getCumulativeArray(dashboardData.monthlyTrend.target);
-  const cumulativeActual = getCumulativeArray(dashboardData.monthlyTrend.actual);
-  const cumulativeForecast = getCumulativeArray(dashboardData.monthlyTrend.forecast);
-  const currentIndex = 5;
-  const forecast = cumulativeForecast[currentIndex];
-  const target = cumulativeTarget[currentIndex];
-  const actual = cumulativeActual[currentIndex];
-  const forecastGap = forecast - target;
+  const isOverall = state.selectedRevenueLayer !== 'team';
+  const monthStr = state.selectedRevenueMonth || '2026-05';
+  const orders = dashboardData.salesOrders || [];
+  const monthOrders = orders.filter(o => o.orderDate.startsWith(monthStr));
+  const avgCommission = 125;
 
-  const kpis = [
-    { label: '年度累計売上', value: `${actual.toLocaleString()}万`, sub: `累計目標 ${target.toLocaleString()}万`, pct: (actual / target) * 100, tone: 'blue' },
-    { label: '年度着地予測', value: `${forecast.toLocaleString()}万`, sub: `累計目標差 ${forecastGap >= 0 ? '+' : ''}${forecastGap.toLocaleString()}万`, pct: (forecast / target) * 100, tone: forecastGap >= 0 ? 'emerald' : 'amber' },
-    { label: '当月決定数', value: `${offers.value}件`, sub: `当月目標 ${offers.target}件`, pct: offers.achievementRate, tone: 'cyan' },
-    { label: '平均単価', value: `${dashboardData.unitPriceTrend.avgCommission.at(-1)}万`, sub: '紹介手数料', pct: 100, tone: 'purple' }
-  ];
+  let kpis = [];
+
+  if (isOverall) {
+    let currentIndex = 5;
+    if (monthStr === '2026-04') currentIndex = 4;
+    else if (monthStr === '2026-06') currentIndex = 6;
+
+    const cumulativeTarget = getCumulativeArray(dashboardData.monthlyTrend.target);
+    const cumulativeActual = getCumulativeArray(dashboardData.monthlyTrend.actual);
+    const cumulativeForecast = getCumulativeArray(dashboardData.monthlyTrend.forecast);
+    
+    const target = cumulativeTarget[currentIndex];
+    const basePipeline = getExpectedRevenue('overall');
+    
+    const connMult = (state.revenueSimulator?.connection || 34) / 34;
+    const consentMult = (state.revenueSimulator?.consent || 56) / 56;
+    const closeMult = (state.revenueSimulator?.close || 40) / 40;
+    const simMultiplier = connMult * consentMult * closeMult;
+    const pipeline = basePipeline * simMultiplier;
+    
+    // Confirmed orders in selected month
+    const monthConfirmed = monthOrders.filter(o => o.status === 'confirmed').reduce((sum, o) => sum + o.commission, 0);
+    const monthlyTarget = dashboardData.monthlyTrend.target[currentIndex];
+    
+    // Cumulative actual up to selected month (using forecast values as fallback for missing past data if any)
+    const actual = cumulativeActual[currentIndex] || (cumulativeActual[5] + monthConfirmed);
+    const forecast = monthConfirmed + pipeline;
+    const forecastGap = forecast - monthlyTarget;
+
+    kpis = [
+      { label: `確定売上高 (${monthStr.split('-')[1]}月)`, value: `${monthConfirmed.toLocaleString()}万`, sub: `当月目標 ${monthlyTarget.toLocaleString()}万`, pct: (monthConfirmed / monthlyTarget) * 100, tone: 'blue' },
+      { label: `当月着地予測 (${monthStr.split('-')[1]}月)`, value: `${Math.round(forecast).toLocaleString()}万`, sub: `目標差 ${forecastGap >= 0 ? '+' : ''}${Math.round(forecastGap).toLocaleString()}万`, pct: (forecast / monthlyTarget) * 100, tone: forecastGap >= 0 ? 'emerald' : 'amber' },
+      { label: '当月決定数', value: `${monthOrders.filter(o => o.status === 'confirmed').length}件`, sub: `目標決定数 ${Math.round(monthlyTarget / avgCommission)}件`, pct: (monthOrders.filter(o => o.status === 'confirmed').length / Math.round(monthlyTarget / avgCommission)) * 100, tone: 'cyan' },
+      { label: '平均単価', value: `${avgCommission}万`, sub: '紹介手数料', pct: 100, tone: 'purple' }
+    ];
+  } else {
+    const teamId = state.selectedRevenueTeam || 'group1';
+    const team = dashboardData.teamsData[teamId];
+    const target = team.funnel.placements.target * avgCommission;
+    
+    const teamMembers = dashboardData.members.filter(m => MEMBER_TEAM_MAP[m.id] === teamId).map(m => m.name);
+    const actual = monthOrders.filter(o => teamMembers.includes(o.member) && o.status === 'confirmed').reduce((sum, o) => sum + o.commission, 0);
+    const placements = monthOrders.filter(o => teamMembers.includes(o.member) && o.status === 'confirmed').length;
+
+    const basePipeline = getExpectedRevenue('team', teamId);
+    
+    const connMult = (state.revenueSimulator?.connection || 34) / 34;
+    const consentMult = (state.revenueSimulator?.consent || 56) / 56;
+    const closeMult = (state.revenueSimulator?.close || 40) / 40;
+    const simMultiplier = connMult * consentMult * closeMult;
+    const pipeline = basePipeline * simMultiplier;
+    const forecast = actual + pipeline;
+    const forecastGap = forecast - target;
+
+    kpis = [
+      { label: 'チーム累計売上', value: `${actual.toLocaleString()}万`, sub: `チーム目標 ${target.toLocaleString()}万`, pct: (actual / target) * 100, tone: 'blue' },
+      { label: 'チーム着地予測', value: `${Math.round(forecast).toLocaleString()}万`, sub: `目標差 ${forecastGap >= 0 ? '+' : ''}${Math.round(forecastGap).toLocaleString()}万`, pct: (forecast / target) * 100, tone: forecastGap >= 0 ? 'emerald' : 'amber' },
+      { label: '当月決定数', value: `${placements}件`, sub: `当月目標 ${team.funnel.placements.target}件`, pct: (placements / team.funnel.placements.target) * 100, tone: 'cyan' },
+      { label: '平均単価', value: `${avgCommission}万`, sub: '紹介手数料', pct: 100, tone: 'purple' }
+    ];
+  }
 
   kpiGrid.innerHTML = kpis.map(kpi => {
     const color = {
@@ -1744,10 +1808,10 @@ function renderRevenueProgress() {
       purple: 'from-brand-purple to-violet-400 text-brand-purple'
     }[kpi.tone];
     return `
-      <div class="glass-panel rounded-2xl p-5">
+      <div class="glass-panel rounded-2xl p-4 sm:p-5">
         <p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">${kpi.label}</p>
         <div class="mt-2 flex items-end justify-between gap-3">
-          <strong class="text-2xl font-extrabold text-white">${kpi.value}</strong>
+          <strong class="text-xl sm:text-2xl font-extrabold text-white">${kpi.value}</strong>
           <span class="text-[10px] ${color.split(' ').at(-1)} font-bold">${kpi.pct.toFixed(0)}%</span>
         </div>
         <p class="text-[10px] text-slate-400 mt-1">${kpi.sub}</p>
@@ -1762,25 +1826,42 @@ function renderRevenueProgress() {
   renderSalesComparisonMatrix();
   renderUnitPriceMiniChart();
   renderLossReasonList();
+  renderSalesBreakdown();
 }
 
 function getExpectedRevenue(type, id) {
   const orders = dashboardData.salesOrders || [];
-  const pipelineOrders = orders.filter(o => o.status === 'document_collected');
+  const monthStr = state.selectedRevenueMonth || '2026-05';
+  
+  // Filter orders by the selected month
+  const monthOrders = orders.filter(o => o.orderDate.startsWith(monthStr));
+  
+  // Pipeline probability weighting helper
+  const getWeightedCommission = (o) => {
+    if (!state.useWeightedPipeline) return o.commission;
+    const rank = o.rank || 'B';
+    const weight = { 'A': 0.8, 'B': 0.5, 'C': 0.2 }[rank] || 0.5;
+    return o.commission * weight;
+  };
+  
+  const pipelineOrders = monthOrders.filter(o => o.status === 'document_collected');
 
   if (type === 'member') {
     const m = dashboardData.members.find(member => member.id === id);
     const mName = m ? m.name : '';
-    return pipelineOrders.filter(o => o.member === mName).reduce((sum, o) => sum + o.commission, 0);
+    return pipelineOrders.filter(o => o.member === mName).reduce((sum, o) => sum + getWeightedCommission(o), 0);
   }
 
   if (type === 'team') {
     const teamMembers = dashboardData.members.filter(member => MEMBER_TEAM_MAP[member.id] === id).map(m => m.name);
-    let pipeline = pipelineOrders.filter(o => teamMembers.includes(o.member)).reduce((sum, o) => sum + o.commission, 0);
-    if (pipeline === 0) {
+    let pipeline = pipelineOrders.filter(o => teamMembers.includes(o.member)).reduce((sum, o) => sum + getWeightedCommission(o), 0);
+    if (pipeline === 0 && monthStr === '2026-05') {
       const team = dashboardData.teamsData[id];
       if (team) {
         pipeline = Math.max(0, (team.funnel.setups.actual - team.funnel.placements.actual) * 0.4 * 125);
+        if (state.useWeightedPipeline) {
+          pipeline = pipeline * 0.6;
+        }
       }
     }
     return pipeline;
@@ -1795,31 +1876,48 @@ function getExpectedRevenue(type, id) {
     let pipeline = 0;
     teamIds.forEach(tId => {
       const teamMembers = dashboardData.members.filter(member => MEMBER_TEAM_MAP[member.id] === tId).map(m => m.name);
-      let teamPipeline = pipelineOrders.filter(o => teamMembers.includes(o.member)).reduce((sum, o) => sum + o.commission, 0);
-      if (teamPipeline === 0) {
+      let teamPipeline = pipelineOrders.filter(o => teamMembers.includes(o.member)).reduce((sum, o) => sum + getWeightedCommission(o), 0);
+      if (teamPipeline === 0 && monthStr === '2026-05') {
         const team = dashboardData.teamsData[tId];
         if (team) {
           teamPipeline = Math.max(0, (team.funnel.setups.actual - team.funnel.placements.actual) * 0.4 * 125);
+          if (state.useWeightedPipeline) {
+            teamPipeline = teamPipeline * 0.6;
+          }
         }
       }
       pipeline += teamPipeline;
     });
     return pipeline;
   }
-  return 0;
+  
+  // Default: overall pipeline
+  return pipelineOrders.reduce((sum, o) => sum + getWeightedCommission(o), 0);
 }
 
 function getRevenueComparisonItems(mode = state.revenueComparisonMode) {
   const avgCommission = 125;
+  const monthStr = state.selectedRevenueMonth || '2026-05';
+  const orders = dashboardData.salesOrders || [];
+  const monthOrders = orders.filter(o => o.orderDate.startsWith(monthStr));
+
+  // Calculate simulation multiplier based on sliders
+  const connMult = (state.revenueSimulator?.connection || 34) / 34;
+  const consentMult = (state.revenueSimulator?.consent || 56) / 56;
+  const closeMult = (state.revenueSimulator?.close || 40) / 40;
+  const simMultiplier = connMult * consentMult * closeMult;
 
   if (mode === 'member') {
     return dashboardData.members
       .filter(member => state.revenueMemberTeamFilter === 'all' || MEMBER_TEAM_MAP[member.id] === state.revenueMemberTeamFilter)
       .map(member => {
-        const actual = member.metrics.revenue / 10000; // revenue is in yen, convert to ten-thousand yen
+        const actual = monthOrders.filter(o => o.member === member.name && o.status === 'confirmed').reduce((sum, o) => sum + o.commission, 0);
         const target = 4 * avgCommission; // target placements is 4, target revenue is 4 * 125 = 500
-        const pipeline = getExpectedRevenue('member', member.id);
+        const basePipeline = getExpectedRevenue('member', member.id);
+        const pipeline = basePipeline * simMultiplier;
         const forecast = actual + pipeline;
+        const placements = monthOrders.filter(o => o.member === member.name && o.status === 'confirmed').length;
+        
         return {
           id: member.id,
           name: member.name,
@@ -1830,7 +1928,7 @@ function getRevenueComparisonItems(mode = state.revenueComparisonMode) {
           pipeline: pipeline,
           forecast: forecast,
           forecastPct: target > 0 ? (forecast / target) * 100 : 0,
-          placements: member.metrics.placements,
+          placements: placements,
           avgComm: avgCommission
         };
       });
@@ -1858,12 +1956,15 @@ function getRevenueComparisonItems(mode = state.revenueComparisonMode) {
         const team = teams[tId];
         if (team) {
           target += team.funnel.placements.target * avgCommission;
-          actual += team.funnel.placements.actual * avgCommission;
-          placements += team.funnel.placements.actual;
+          const teamMembers = dashboardData.members.filter(m => MEMBER_TEAM_MAP[m.id] === tId).map(m => m.name);
+          const teamConfirmedOrders = monthOrders.filter(o => teamMembers.includes(o.member) && o.status === 'confirmed');
+          actual += teamConfirmedOrders.reduce((sum, o) => sum + o.commission, 0);
+          placements += teamConfirmedOrders.length;
         }
       });
 
-      const pipeline = getExpectedRevenue('area', area.id);
+      const basePipeline = getExpectedRevenue('area', area.id);
+      const pipeline = basePipeline * simMultiplier;
       const forecast = actual + pipeline;
 
       return {
@@ -1885,8 +1986,13 @@ function getRevenueComparisonItems(mode = state.revenueComparisonMode) {
   // Default: team mode
   return Object.entries(dashboardData.teamsData).map(([id, team]) => {
     const target = team.funnel.placements.target * avgCommission;
-    const actual = team.funnel.placements.actual * avgCommission;
-    const pipeline = getExpectedRevenue('team', id);
+    const teamMembers = dashboardData.members.filter(m => MEMBER_TEAM_MAP[m.id] === id).map(m => m.name);
+    const teamConfirmedOrders = monthOrders.filter(o => teamMembers.includes(o.member) && o.status === 'confirmed');
+    const actual = teamConfirmedOrders.reduce((sum, o) => sum + o.commission, 0);
+    const placements = teamConfirmedOrders.length;
+
+    const basePipeline = getExpectedRevenue('team', id);
+    const pipeline = basePipeline * simMultiplier;
     const forecast = actual + pipeline;
 
     return {
@@ -1899,7 +2005,7 @@ function getRevenueComparisonItems(mode = state.revenueComparisonMode) {
       pipeline: pipeline,
       forecast: forecast,
       forecastPct: target > 0 ? (forecast / target) * 100 : 0,
-      placements: team.funnel.placements.actual,
+      placements: placements,
       avgComm: avgCommission
     };
   });
@@ -2069,39 +2175,76 @@ window.resetRevenueFilter = function() {
 };
 
 function getDailyRevenueStackData() {
-  const orders = dashboardData.salesOrders || [];
-  if (orders.length === 0) {
-    return {
-      labels: [],
-      confirmed: [],
-      documentCollected: [],
-      confirmedTotal: 0,
-      documentCollectedTotal: 0
-    };
+  const isOverall = state.selectedRevenueLayer !== 'team';
+  const teamId = state.selectedRevenueTeam || 'group1';
+  const monthStr = state.selectedRevenueMonth || '2026-05';
+  let orders = dashboardData.salesOrders || [];
+
+  if (!isOverall) {
+    const teamMembers = dashboardData.members.filter(member => MEMBER_TEAM_MAP[member.id] === teamId).map(m => m.name);
+    orders = orders.filter(order => teamMembers.includes(order.member));
   }
 
-  const maxDay = Math.max(...orders.map(order => Number(order.orderDate.split('-')[2])));
+  const maxDay = 31; // Show up to the end of the month
   let confirmedTotal = 0;
   let documentCollectedTotal = 0;
   const labels = [];
   const confirmed = [];
   const documentCollected = [];
 
+  const [year, month] = monthStr.split('-').map(Number);
+
   for (let day = 1; day <= maxDay; day += 1) {
-    const dayOrders = orders.filter(order => Number(order.orderDate.split('-')[2]) === day);
+    const dayStr = String(day).padStart(2, '0');
+    const fullDate = `${year}-${String(month).padStart(2, '0')}-${dayStr}`;
+    const dayOrders = orders.filter(order => order.orderDate === fullDate);
+    
     dayOrders.forEach(order => {
       if (order.status === 'document_collected') {
-        documentCollectedTotal += order.commission;
+        let comm = order.commission;
+        if (state.useWeightedPipeline) {
+          const rank = order.rank || 'B';
+          const weight = { 'A': 0.8, 'B': 0.5, 'C': 0.2 }[rank] || 0.5;
+          comm = order.commission * weight;
+        }
+        documentCollectedTotal += comm;
       } else {
         confirmedTotal += order.commission;
       }
     });
-    labels.push(`5/${day}`);
+    labels.push(`${month}/${day}`);
     confirmed.push(confirmedTotal);
     documentCollected.push(documentCollectedTotal);
   }
 
-  return { labels, confirmed, documentCollected, confirmedTotal, documentCollectedTotal };
+  // Calculate previous month's progress line
+  let prevMonthStr = '2026-04';
+  if (monthStr === '2026-04') prevMonthStr = '2026-03';
+  else if (monthStr === '2026-06') prevMonthStr = '2026-05';
+
+  const prevYear = prevMonthStr === '2026-03' ? 2026 : Number(prevMonthStr.split('-')[0]);
+  const prevMonth = prevMonthStr === '2026-03' ? 3 : Number(prevMonthStr.split('-')[1]);
+  
+  const prevMonthConfirmed = [];
+  let prevConfirmedTotal = 0;
+  
+  for (let day = 1; day <= maxDay; day += 1) {
+    const dayStr = String(day).padStart(2, '0');
+    const fullDate = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${dayStr}`;
+    
+    const dayOrders = orders.filter(order => order.orderDate === fullDate && order.status === 'confirmed');
+    dayOrders.forEach(order => {
+      prevConfirmedTotal += order.commission;
+    });
+    
+    if (prevMonthStr === '2026-03') {
+      prevMonthConfirmed.push(Math.round((day / 31) * 2680));
+    } else {
+      prevMonthConfirmed.push(prevConfirmedTotal);
+    }
+  }
+
+  return { labels, confirmed, documentCollected, confirmedTotal, documentCollectedTotal, prevMonthConfirmed, prevMonthLabel: `${prevMonth}月実績` };
 }
 
 function renderRevenueProgressChart() {
@@ -2113,27 +2256,51 @@ function renderRevenueProgressChart() {
   }
 
   const dailyRevenue = getDailyRevenueStackData();
+  const isOverall = state.selectedRevenueLayer !== 'team';
+  const teamId = state.selectedRevenueTeam || 'group1';
+  const monthStr = state.selectedRevenueMonth || '2026-05';
+
+  let target = 3000;
+  if (!isOverall) {
+    const team = dashboardData.teamsData[teamId];
+    target = team ? team.funnel.placements.target * 125 : 3000;
+  } else {
+    let currentIndex = 5;
+    if (monthStr === '2026-04') currentIndex = 4;
+    else if (monthStr === '2026-06') currentIndex = 6;
+    target = dashboardData.monthlyTrend.target[currentIndex];
+  }
+
+  const goalPaceData = dailyRevenue.labels.map(lbl => {
+    const day = Number(lbl.split('/')[1]);
+    return Math.round((day / 31) * target);
+  });
 
   charts.revenueProgress = new ApexCharts(el, {
     series: [
-      { name: '受注済み', data: dailyRevenue.confirmed },
-      { name: '書類回収済み', data: dailyRevenue.documentCollected }
+      { name: '受注済み', type: 'column', data: dailyRevenue.confirmed },
+      { name: '書類回収済み (見込)', type: 'column', data: dailyRevenue.documentCollected },
+      { name: '目標ペース', type: 'line', data: goalPaceData },
+      { name: dailyRevenue.prevMonthLabel, type: 'line', data: dailyRevenue.prevMonthConfirmed }
     ],
     chart: {
-      type: 'bar',
+      type: 'line',
       height: 320,
       stacked: true,
       background: 'transparent',
       toolbar: { show: false },
       foreColor: '#cbd5e1'
     },
-    colors: ['#10b981', '#f59e0b'],
+    colors: ['#10b981', '#f59e0b', '#cbd5e1', '#3b82f6'],
+    stroke: {
+      width: [0, 0, 2.5, 2.0],
+      dashArray: [0, 0, 5, 3]
+    },
     plotOptions: {
       bar: {
         horizontal: false,
         columnWidth: '68%',
-        borderRadius: 3,
-        borderRadiusApplication: 'end'
+        borderRadius: 3
       }
     },
     dataLabels: { enabled: false },
@@ -2165,6 +2332,92 @@ function renderRevenueProgressChart() {
     }
   });
   charts.revenueProgress.render();
+}
+
+function renderSalesBreakdown() {
+  const container = document.getElementById('salesBreakdownContainer');
+  if (!container) return;
+
+  const monthStr = state.selectedRevenueMonth || '2026-05';
+  const orders = dashboardData.salesOrders || [];
+  
+  // Filter by selected month and only confirmed orders
+  const monthOrders = orders.filter(o => o.orderDate.startsWith(monthStr) && o.status === 'confirmed');
+  const totalRevenue = monthOrders.reduce((sum, o) => sum + o.commission, 0);
+
+  const jobBreakdown = {};
+  const contractBreakdown = {};
+
+  monthOrders.forEach(o => {
+    const job = o.jobType || 'その他';
+    const contract = o.contractType || 'その他';
+    
+    jobBreakdown[job] = (jobBreakdown[job] || 0) + o.commission;
+    contractBreakdown[contract] = (contractBreakdown[contract] || 0) + o.commission;
+  });
+
+  const buildProgressRow = (label, val, total, colorClass) => {
+    const pct = total > 0 ? (val / total) * 100 : 0;
+    return `
+      <div>
+        <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+          <span>${label}</span>
+          <strong class="text-white">${val.toLocaleString()}万 <span class="text-slate-500 font-normal">(${pct.toFixed(0)}%)</span></strong>
+        </div>
+        <div class="h-1.5 bg-slate-800/70 rounded-full overflow-hidden">
+          <div class="h-full rounded-full bg-gradient-to-r ${colorClass}" style="width: ${pct}%"></div>
+        </div>
+      </div>
+    `;
+  };
+
+  const jobColors = {
+    '調剤薬局': 'from-brand-blue to-blue-400',
+    'ドラッグ(調剤有)': 'from-brand-emerald to-emerald-400',
+    'ドラッグ(OTCのみ)': 'from-brand-cyan to-cyan-400',
+    '病院・クリニック': 'from-brand-purple to-purple-400',
+    'その他': 'from-slate-600 to-slate-400'
+  };
+
+  const contractColors = {
+    '正社員 (一般職)': 'from-brand-blue to-indigo-400',
+    '正社員 (専門職)': 'from-brand-amber to-yellow-400',
+    '正社員 (管理職)': 'from-brand-purple to-pink-400',
+    'その他': 'from-slate-600 to-slate-400'
+  };
+
+  let html = `<div class="space-y-2.5">
+    <div class="text-[9.5px] uppercase tracking-wider text-slate-500 font-bold border-b border-slate-800/60 pb-1.5 mb-2">💼 職種別売上</div>
+  `;
+  
+  if (totalRevenue === 0) {
+    html += `<p class="text-[10px] text-slate-500 text-center py-2">当月の成約実績がありません</p>`;
+  } else {
+    Object.entries(jobBreakdown)
+      .sort((a, b) => b[1] - a[1])
+      .forEach(([label, val]) => {
+        const color = jobColors[label] || 'from-slate-600 to-slate-400';
+        html += buildProgressRow(label, val, totalRevenue, color);
+      });
+  }
+
+  html += `
+    <div class="text-[9.5px] uppercase tracking-wider text-slate-500 font-bold border-b border-slate-800/60 pb-1.5 mt-4 mb-2">📄 雇用区分別売上</div>
+  `;
+
+  if (totalRevenue === 0) {
+    html += `<p class="text-[10px] text-slate-500 text-center py-2">当月の成約実績がありません</p>`;
+  } else {
+    Object.entries(contractBreakdown)
+      .sort((a, b) => b[1] - a[1])
+      .forEach(([label, val]) => {
+        const color = contractColors[label] || 'from-slate-600 to-slate-400';
+        html += buildProgressRow(label, val, totalRevenue, color);
+      });
+  }
+
+  html += `</div>`;
+  container.innerHTML = html;
 }
 
 function renderTeamRevenueList() {
@@ -2216,7 +2469,7 @@ function renderUnitPriceMiniChart() {
       { name: '紹介手数料', data: dashboardData.unitPriceTrend.avgCommission },
       { name: '決定年収', data: dashboardData.unitPriceTrend.avgSalary }
     ],
-    chart: { type: 'line', height: 140, background: 'transparent', toolbar: { show: false }, foreColor: '#94a3b8' },
+    chart: { type: 'line', height: 280, background: 'transparent', toolbar: { show: false }, foreColor: '#94a3b8' },
     colors: ['#06b6d4', '#8b5cf6'],
     stroke: { width: 3, curve: 'smooth' },
     labels: dashboardData.unitPriceTrend.months,
@@ -4674,3 +4927,438 @@ window.toggleComparisonStageActions = function(stageKey, clickedEl) {
     }
   });
 };
+
+window.switchRevenueMonth = function(month) {
+  state.selectedRevenueMonth = month;
+  
+  // Highlight active month button
+  const months = ['2026-04', '2026-05', '2026-06'];
+  months.forEach(m => {
+    const btnId = `revenue-month-btn-${m.split('-')[1]}`;
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      if (m === month) {
+        btn.className = 'px-3 py-1.5 bg-slate-800 text-white border-r border-slate-700/80 transition duration-150';
+      } else {
+        btn.className = 'px-3 py-1.5 bg-slate-950/40 text-slate-400 hover:text-white transition duration-150';
+      }
+    }
+  });
+  
+  updatePageContext();
+  renderAll();
+};
+
+window.toggleWeightedPipeline = function(isWeighted) {
+  state.useWeightedPipeline = isWeighted;
+  
+  const stdBtn = document.getElementById('pipeline-weight-std');
+  const wtdBtn = document.getElementById('pipeline-weight-wtd');
+  if (stdBtn && wtdBtn) {
+    if (isWeighted) {
+      stdBtn.className = 'px-2.5 py-1 bg-slate-950/40 text-slate-400 hover:text-white transition';
+      wtdBtn.className = 'px-2.5 py-1 bg-slate-800 text-white border-r border-slate-700/50 hover:text-white transition';
+    } else {
+      stdBtn.className = 'px-2.5 py-1 bg-slate-800 text-white border-r border-slate-700/50 hover:text-white transition';
+      wtdBtn.className = 'px-2.5 py-1 bg-slate-950/40 text-slate-400 hover:text-white transition';
+    }
+  }
+  
+  updatePageContext();
+  renderAll();
+};
+
+// -------------------------------------------------------------
+// 4. クロス集計・分析ロジック
+// -------------------------------------------------------------
+
+window.onCrossAxisChange = function() {
+  const rowSelector = document.getElementById('crossRowSelector');
+  const colSelector = document.getElementById('crossColSelector');
+  const metricSelector = document.getElementById('crossMetricSelector');
+  
+  if (rowSelector && colSelector && metricSelector) {
+    state.crossTab.rowAxis = rowSelector.value;
+    state.crossTab.colAxis = colSelector.value;
+    state.crossTab.metric = metricSelector.value;
+    
+    // 選択値のリセット
+    state.crossTab.selectedRow = null;
+    state.crossTab.selectedCol = null;
+    
+    renderCrossTabulation();
+  }
+};
+
+function getAxisLabel(axisKey) {
+  return {
+    area: 'エリア',
+    ageGroup: '年齢',
+    jobType: '職種',
+    contractType: '契約区分'
+  }[axisKey] || axisKey;
+}
+
+function getAxisValues(axisKey) {
+  return {
+    area: ['関東', '関西', '東海'],
+    ageGroup: ['20代', '30代', '40代', '50代以上'],
+    jobType: ['調剤薬局', 'ドラッグ(調剤有)', 'ドラッグ(OTCのみ)', '病院・クリニック'],
+    contractType: ['正社員 (一般職)', '正社員 (専門職)', '正社員 (管理職)']
+  }[axisKey] || [];
+}
+
+function getFunnelMetricsForCandidates(subset) {
+  const registrations = subset.length;
+  const bookings = subset.filter(c => c.maxStage >= 1).length;
+  const interviews = subset.filter(c => c.maxStage >= 2).length;
+  const proposals = subset.filter(c => c.maxStage >= 3).length;
+  const recommendations = subset.filter(c => c.maxStage >= 4).length;
+  const setups = subset.filter(c => c.maxStage >= 5).length;
+  const placements = subset.filter(c => c.maxStage >= 6).length;
+
+  return {
+    registrations,
+    bookings,
+    interviews,
+    proposals,
+    recommendations,
+    setups,
+    placements
+  };
+}
+
+function getMetricValue(metrics, metricKey) {
+  switch (metricKey) {
+    case 'rate_overall':
+      return metrics.registrations > 0 ? (metrics.placements / metrics.registrations) * 100 : 0;
+    case 'rate_interview_rec':
+      return metrics.interviews > 0 ? (metrics.recommendations / metrics.interviews) * 100 : 0;
+    case 'rate_rec_setup':
+      return metrics.recommendations > 0 ? (metrics.setups / metrics.recommendations) * 100 : 0;
+    case 'rate_setup_placement':
+      return metrics.setups > 0 ? (metrics.placements / metrics.setups) * 100 : 0;
+    default:
+      return metrics[metricKey] || 0;
+  }
+}
+
+function formatMetricValue(value, metricKey) {
+  if (metricKey.startsWith('rate_')) {
+    return value.toFixed(1) + '%';
+  }
+  return value.toLocaleString() + '件';
+}
+
+window.selectCrossCell = function(rowVal, colVal) {
+  state.crossTab.selectedRow = rowVal;
+  state.crossTab.selectedCol = colVal;
+  
+  // マトリクス再描画（選択したセルに枠を付けるため）
+  renderCrossTabulation();
+};
+
+function renderCrossTabulation() {
+  const matrixTable = document.getElementById('crossMatrixTable');
+  if (!matrixTable) return;
+  
+  const { rowAxis, colAxis, metric } = state.crossTab;
+  
+  if (rowAxis === colAxis) {
+    matrixTable.innerHTML = `
+      <tbody>
+        <tr>
+          <td class="p-8 text-center text-slate-400 font-bold">
+            <div class="flex flex-col items-center gap-2">
+              <i data-lucide="alert-triangle" class="w-8 h-8 text-brand-amber"></i>
+              <span>行軸と列軸に同じ項目は設定できません。<br>異なる軸を選択してください。</span>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    `;
+    lucide.createIcons();
+    document.getElementById('crossSegmentDetailContainer').innerHTML = `
+      <div class="min-h-40 flex items-center justify-center text-slate-500 text-xs">
+        軸を選択し直してください。
+      </div>
+    `;
+    return;
+  }
+  
+  const rowVals = getAxisValues(rowAxis);
+  const colVals = getAxisValues(colAxis);
+  const candidates = dashboardData.candidates || [];
+  
+  // デフォルト選択の設定
+  if (!state.crossTab.selectedRow || !rowVals.includes(state.crossTab.selectedRow)) {
+    state.crossTab.selectedRow = rowVals[0];
+  }
+  if (!state.crossTab.selectedCol || !colVals.includes(state.crossTab.selectedCol)) {
+    state.crossTab.selectedCol = colVals[0];
+  }
+  
+  // 行と列の組み合わせデータ計算
+  const gridData = {};
+  let minVal = Infinity;
+  let maxVal = -Infinity;
+  
+  rowVals.forEach(row => {
+    gridData[row] = {};
+    colVals.forEach(col => {
+      const subset = candidates.filter(c => c[rowAxis] === row && c[colAxis] === col);
+      const metrics = getFunnelMetricsForCandidates(subset);
+      const val = getMetricValue(metrics, metric);
+      gridData[row][col] = { val, metrics };
+      
+      if (val < minVal) minVal = val;
+      if (val > maxVal) maxVal = val;
+    });
+  });
+  
+  // 各行・各列・全体のトータル計算
+  const rowTotals = {};
+  rowVals.forEach(row => {
+    const subset = candidates.filter(c => c[rowAxis] === row);
+    const metrics = getFunnelMetricsForCandidates(subset);
+    rowTotals[row] = getMetricValue(metrics, metric);
+  });
+  
+  const colTotals = {};
+  colVals.forEach(col => {
+    const subset = candidates.filter(c => c[colAxis] === col);
+    const metrics = getFunnelMetricsForCandidates(subset);
+    colTotals[col] = getMetricValue(metrics, metric);
+  });
+  
+  const overallMetrics = getFunnelMetricsForCandidates(candidates);
+  const grandTotal = getMetricValue(overallMetrics, metric);
+  
+  // テーブルHTML生成
+  let tableHtml = `
+    <thead>
+      <tr class="bg-slate-900/60 text-slate-400 font-bold border-b border-slate-800/80">
+        <th class="p-3 text-left border-r border-slate-800/50">${getAxisLabel(rowAxis)} \\ ${getAxisLabel(colAxis)}</th>
+  `;
+  
+  colVals.forEach(col => {
+    tableHtml += `<th class="p-3 text-center min-w-[90px] font-bold text-slate-300">${col}</th>`;
+  });
+  tableHtml += `<th class="p-3 text-center border-l border-slate-800/50 font-extrabold text-white bg-slate-900/40">全体</th></tr></thead>`;
+  
+  tableHtml += '<tbody class="divide-y divide-slate-800/40 text-slate-300">';
+  
+  rowVals.forEach(row => {
+    tableHtml += `
+      <tr class="hover:bg-slate-900/20 transition-colors">
+        <td class="p-3 font-bold text-left border-r border-slate-800/50 text-slate-200 bg-slate-900/10">${row}</td>
+    `;
+    
+    colVals.forEach(col => {
+      const cell = gridData[row][col];
+      const isSelected = state.crossTab.selectedRow === row && state.crossTab.selectedCol === col;
+      
+      // ヒートマップの不透明度算出 (0.05〜0.75)
+      let opacity = 0.05;
+      if (maxVal > minVal) {
+        opacity = 0.05 + 0.70 * ((cell.val - minVal) / (maxVal - minVal));
+      }
+      
+      const heatBg = `rgba(59, 130, 246, ${opacity})`; // brand-blue をベースにした熱感
+      const borderStyle = isSelected ? 'border: 2px solid #06b6d4; box-shadow: inset 0 0 8px rgba(6, 182, 212, 0.4);' : '';
+      
+      tableHtml += `
+        <td onclick="selectCrossCell('${row}', '${col}')" 
+            class="p-3 text-center cursor-pointer font-semibold transition-all relative ${isSelected ? 'z-10' : ''}" 
+            style="background-color: ${heatBg}; ${borderStyle}"
+            title="${row} × ${col} の詳細表示">
+          ${formatMetricValue(cell.val, metric)}
+        </td>
+      `;
+    });
+    
+    // 行全体
+    tableHtml += `
+      <td class="p-3 text-center border-l border-slate-800/50 font-extrabold text-slate-200 bg-slate-900/30">
+        ${formatMetricValue(rowTotals[row], metric)}
+      </td>
+    </tr>`;
+  });
+  
+  // 列全体（フッター行）
+  tableHtml += `
+    <tr class="bg-slate-900/40 border-t border-slate-800/80 font-bold">
+      <td class="p-3 border-r border-slate-800/50 font-extrabold text-slate-300">全体</td>
+  `;
+  colVals.forEach(col => {
+    tableHtml += `
+      <td class="p-3 text-center font-extrabold text-slate-200">
+        ${formatMetricValue(colTotals[col], metric)}
+      </td>
+    `;
+  });
+  tableHtml += `
+      <td class="p-3 text-center border-l border-slate-800/50 font-black text-brand-cyan bg-slate-900/60">
+        ${formatMetricValue(grandTotal, metric)}
+      </td>
+    </tr>
+  </tbody>
+  `;
+  
+  matrixTable.innerHTML = tableHtml;
+  
+  // 右側のセグメント詳細パネルの描画
+  renderSegmentDetail(state.crossTab.selectedRow, state.crossTab.selectedCol, rowAxis, colAxis);
+  lucide.createIcons();
+}
+
+function getSegmentInsights(rowVal, colVal, metrics) {
+  const conversionRate = metrics.registrations > 0 ? (metrics.placements / metrics.registrations) * 100 : 0;
+  
+  // ボトルネック特定用
+  const rates = [
+    { label: '面談設定率', val: metrics.registrations > 0 ? (metrics.bookings / metrics.registrations) * 100 : 0, key: 'booking' },
+    { label: '面談実施率', val: metrics.bookings > 0 ? (metrics.interviews / metrics.bookings) * 100 : 0, key: 'interview' },
+    { label: '推薦移行率', val: metrics.interviews > 0 ? (metrics.recommendations / metrics.interviews) * 100 : 0, key: 'rec' },
+    { label: '面接設定率', val: metrics.recommendations > 0 ? (metrics.setups / metrics.recommendations) * 100 : 0, key: 'setup' },
+    { label: '面接決定率', val: metrics.setups > 0 ? (metrics.placements / metrics.setups) * 100 : 0, key: 'placement' }
+  ];
+  
+  // 最小の移行率を検索 (登録分母は省き、移行のボトルネックを探す)
+  let bottleneck = rates[0];
+  for (let i = 1; i < rates.length; i++) {
+    if (rates[i].val > 0 && (bottleneck.val === 0 || rates[i].val < bottleneck.val)) {
+      bottleneck = rates[i];
+    }
+  }
+
+  let text = '';
+  let advice = '';
+  
+  if (conversionRate > 9.0) {
+    text = `決定率 ${conversionRate.toFixed(1)}% は非常に高い水準です。極めて良好なマッチングが実現できています。`;
+    advice = 'このセグメントの候補者が登録された際は最優先でマッチングを回し、現在の成功パターンを横展開してください。';
+  } else if (conversionRate < 4.0) {
+    text = `決定率 ${conversionRate.toFixed(1)}% は全体平均と比べて低迷しています。改善の余地が大きい状態です。`;
+    if (bottleneck.key === 'rec') {
+      advice = '面談から推薦への移行が最大の壁です。求人提案の選定基準を見直し、候補者の「3大本音」に沿った求人訴求を行ってください。';
+    } else if (bottleneck.key === 'setup') {
+      advice = '企業打診後の面接設定率に課題があります。推薦理由書の質を高め、企業側への日程回収のSLAを徹底してください。';
+    } else if (bottleneck.key === 'placement') {
+      advice = '面接から決定への歩留まりがボトルネックです。面接前対策の実施率（志望動機整理や模擬面接）を高めてください。';
+    } else {
+      advice = '初動の接触率や面談日程の調整に問題があります。登録当日のファーストコンタクト時間短縮を徹底しましょう。';
+    }
+  } else {
+    text = `決定率 ${conversionRate.toFixed(1)}% は平均的な水準です。`;
+    advice = `ボトルネックとなっている「${bottleneck.label} (${bottleneck.val.toFixed(1)}%)」を改善することで、更なる決定数向上が期待できます。`;
+  }
+  
+  return { text, advice, bottleneckLabel: bottleneck.label };
+}
+
+function renderSegmentDetail(rowVal, colVal, rowAxis, colAxis) {
+  const container = document.getElementById('crossSegmentDetailContainer');
+  if (!container) return;
+  
+  const candidates = dashboardData.candidates || [];
+  const subset = candidates.filter(c => c[rowAxis] === rowVal && c[colAxis] === colVal);
+  const metrics = getFunnelMetricsForCandidates(subset);
+  const conversionRate = metrics.registrations > 0 ? (metrics.placements / metrics.registrations) * 100 : 0;
+  
+  const insights = getSegmentInsights(rowVal, colVal, metrics);
+  
+  const stageData = [
+    { name: '登録', val: metrics.registrations, key: 'registrations', color: 'bg-slate-500' },
+    { name: '面談設定', val: metrics.bookings, key: 'bookings', color: 'bg-blue-500' },
+    { name: '面談実施', val: metrics.interviews, key: 'interviews', color: 'bg-cyan-500' },
+    { name: '求人提案', val: metrics.proposals, key: 'proposals', color: 'bg-purple-500' },
+    { name: '推薦', val: metrics.recommendations, key: 'recommendations', color: 'bg-pink-500' },
+    { name: '面接', val: metrics.setups, key: 'setups', color: 'bg-amber-500' },
+    { name: '決定', val: metrics.placements, key: 'placements', color: 'bg-emerald-500' }
+  ];
+  
+  let html = `
+    <div class="space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800/80">
+        <div>
+          <h4 class="text-sm font-extrabold text-white flex items-center gap-1.5">
+            <i data-lucide="user-check" class="w-4 h-4 text-brand-cyan"></i>
+            <span>${rowVal} × ${colVal}</span>
+          </h4>
+          <p class="text-[9px] text-slate-400 mt-0.5">選択したセグメントのプロセス品質</p>
+        </div>
+        <span class="px-2 py-0.5 rounded bg-brand-blue/10 border border-brand-blue/20 text-brand-cyan text-[10px] font-black">
+          決定率: ${conversionRate.toFixed(1)}%
+        </span>
+      </div>
+
+      <!-- 主要KPIカード -->
+      <div class="grid grid-cols-3 gap-2">
+        <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80 text-center">
+          <p class="text-[9px] text-slate-500 font-bold uppercase">登録数</p>
+          <p class="text-sm font-black text-white mt-0.5">${metrics.registrations} <span class="text-[9px] text-slate-400 font-normal">名</span></p>
+        </div>
+        <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80 text-center">
+          <p class="text-[9px] text-slate-500 font-bold uppercase">推薦数</p>
+          <p class="text-sm font-black text-white mt-0.5">${metrics.recommendations} <span class="text-[9px] text-slate-400 font-normal">件</span></p>
+        </div>
+        <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80 text-center">
+          <p class="text-[9px] text-slate-500 font-bold uppercase">決定数</p>
+          <p class="text-sm font-black text-brand-emerald mt-0.5">${metrics.placements} <span class="text-[9px] text-slate-400 font-normal">名</span></p>
+        </div>
+      </div>
+
+      <!-- プロセス詳細バー -->
+      <div class="space-y-2 mt-2">
+        <h5 class="text-[10px] font-bold text-slate-400 tracking-wider">プロセス推移 (対登録比)</h5>
+        <div class="space-y-2 pr-1 max-h-[170px] overflow-y-auto">
+  `;
+  
+  stageData.forEach((stage, idx) => {
+    const rateToReg = metrics.registrations > 0 ? (stage.val / metrics.registrations) * 100 : 0;
+    
+    // 前のステップからの移行率
+    let transitionText = '';
+    if (idx > 0) {
+      const prevVal = stageData[idx - 1].val;
+      const transRate = prevVal > 0 ? (stage.val / prevVal) * 100 : 0;
+      transitionText = `<span class="text-[8.5px] text-slate-400">移行率: ${transRate.toFixed(0)}%</span>`;
+    }
+    
+    html += `
+      <div class="text-[10px]">
+        <div class="flex justify-between items-center mb-0.5">
+          <span class="font-bold text-slate-300">${stage.name}</span>
+          <div class="flex items-center gap-2">
+            ${transitionText}
+            <span class="font-bold text-white">${stage.val}名 <span class="text-[9.5px] text-slate-500">(${rateToReg.toFixed(0)}%)</span></span>
+          </div>
+        </div>
+        <div class="w-full bg-slate-950/60 rounded-full h-1.5 overflow-hidden border border-slate-800/60">
+          <div class="h-full rounded-full ${stage.color}" style="width: ${Math.min(rateToReg, 100)}%"></div>
+        </div>
+      </div>
+    `;
+  });
+  
+  html += `
+        </div>
+      </div>
+
+      <!-- AIインサイトとアドバイス -->
+      <div class="mt-4 p-3 rounded-xl border border-slate-800/80 bg-slate-950/40 space-y-1.5">
+        <div class="flex items-center gap-1 text-[10px] font-bold text-brand-cyan">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+          <span>プロセス課題と対策推奨</span>
+        </div>
+        <p class="text-[9.5px] text-slate-300 leading-relaxed">${insights.text}</p>
+        <p class="text-[9.5px] text-slate-400 leading-relaxed border-t border-slate-850 pt-1.5 mt-1.5"><strong class="text-brand-amber font-bold">【推奨アクション】</strong>${insights.advice}</p>
+      </div>
+    </div>
+  `;
+  
+  container.innerHTML = html;
+  lucide.createIcons();
+}
+
