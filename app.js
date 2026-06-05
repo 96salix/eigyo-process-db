@@ -18,6 +18,8 @@ const state = {
   funnelComparisonMode: 'team',
   funnelOverallScope: 'all',
   funnelComparisonSort: { stageKey: null, type: 'metric', direction: 'desc' },
+  funnelViewMode: 'counts',
+  funnelHighlightMode: 'none',
   memberTeamFilter: 'all',
   leaderboardMetric: 'calls',
   selectedFunnelLayer: 'team',
@@ -887,7 +889,7 @@ function getComparisonStageValue(item, stageKey, type = 'metric') {
     return prevMetric?.actual > 0 ? (metric.actual / prevMetric.actual) * 100 : 0;
   }
 
-  return metric.actual;
+  return metric.target > 0 ? (metric.actual / metric.target) * 100 : 0;
 }
 
 function getComparisonChipLabel(name) {
@@ -965,11 +967,103 @@ function renderTeamFunnelComparisonMatrix() {
     return;
   }
 
-  const labelWidth = 142;
+  const labelWidth = 170;
   const columnWidth = 173;
   const overallScope = state.funnelOverallScope || 'all';
   const overallItems = overallScope === 'visible' ? visibleItems : items;
   const overallFunnel = sumFunnelItems(overallItems);
+
+  const getStageRates = (item, stageKey, idx) => {
+    const fData = item.funnel;
+    const metric = fData[stageKey];
+    if (!metric) return { actualRate: 0, targetRate: 0, ratio: 1 };
+
+    const actualRate = metric.target > 0 ? (metric.actual / metric.target) * 100 : 0;
+    const targetRate = 100;
+    const ratio = actualRate / 100;
+    return { actualRate, targetRate, ratio };
+  };
+
+  const getTransitionRates = (item, stageKey, idx) => {
+    if (idx === 0) return { actualRate: 100, targetRate: 100, ratio: 1 };
+    const fData = item.funnel;
+    const metric = fData[stageKey];
+    const prevStage = FUNNEL_STAGES[idx - 1];
+    const prevActual = fData[prevStage.key].actual || 0;
+    const prevTarget = fData[prevStage.key].target || 0;
+
+    const actualRate = prevActual > 0 ? (metric.actual / prevActual) * 100 : 0;
+    const targetRate = prevTarget > 0 ? (metric.target / prevTarget) * 100 : 0;
+    const ratio = targetRate > 0 ? (actualRate / targetRate) : (actualRate > 0 ? 1 : 0);
+    return { actualRate, targetRate, ratio };
+  };
+
+  // Highlighting calculations
+  const rowWorstInfo = {};
+  const transitionWorstInfo = {};
+  const colWorstInfo = {};
+
+  if (state.funnelHighlightMode === 'row' && visibleItems.length > 1) {
+    if (state.funnelViewMode === 'efficiency') {
+      FUNNEL_STAGES.forEach((stage, idx) => {
+        if (idx === 0) return;
+        let minRatio = Infinity;
+        let minItemIds = [];
+        visibleItems.forEach(item => {
+          const { ratio } = getTransitionRates(item, stage.key, idx);
+          if (ratio < minRatio) {
+            minRatio = ratio;
+            minItemIds = [item.id];
+          } else if (Math.abs(ratio - minRatio) < 0.0001) {
+            minItemIds.push(item.id);
+          }
+        });
+        transitionWorstInfo[stage.key] = { minItemIds };
+      });
+    } else {
+      FUNNEL_STAGES.forEach((stage) => {
+        let minRatio = Infinity;
+        let minItemIds = [];
+        visibleItems.forEach(item => {
+          const { ratio } = getStageRates(item, stage.key);
+          if (ratio < minRatio) {
+            minRatio = ratio;
+            minItemIds = [item.id];
+          } else if (Math.abs(ratio - minRatio) < 0.0001) {
+            minItemIds.push(item.id);
+          }
+        });
+        rowWorstInfo[stage.key] = { minItemIds };
+      });
+    }
+  } else if (state.funnelHighlightMode === 'column') {
+    visibleItems.forEach(item => {
+      let minRatio = Infinity;
+      let worstCell = null;
+
+      if (state.funnelViewMode === 'efficiency') {
+        FUNNEL_STAGES.forEach((stage, idx) => {
+          if (idx === 0) return;
+          const { ratio } = getTransitionRates(item, stage.key, idx);
+          if (ratio < minRatio) {
+            minRatio = ratio;
+            worstCell = { type: 'transition', key: stage.key };
+          }
+        });
+      } else {
+        FUNNEL_STAGES.forEach((stage) => {
+          const { ratio } = getStageRates(item, stage.key);
+          if (ratio < minRatio) {
+            minRatio = ratio;
+            worstCell = { type: 'stage', key: stage.key };
+          }
+        });
+      }
+
+      colWorstInfo[item.id] = { ...worstCell, minRatio };
+    });
+  }
+
   const scopeButtonClass = (scope) => scope === overallScope
     ? 'bg-brand-blue/20 text-brand-cyan border-brand-blue/40'
     : 'bg-slate-950/30 text-slate-400 border-slate-700/70 hover:text-white hover:bg-slate-800/70';
@@ -1024,12 +1118,17 @@ function renderTeamFunnelComparisonMatrix() {
 
     const overallMetric = overallFunnel[stage.key];
     const overallClasses = FUNNEL_STAGE_CLASSES[stage.accent];
-    const overallRegActual = overallFunnel.registrations.actual || 1;
-    const overallRegTarget = overallFunnel.registrations.target || 1;
-    const overallActualRate = overallRegActual > 0 ? (overallMetric.actual / overallRegActual) * 100 : 0;
-    const overallTargetRate = overallRegTarget > 0 ? (overallMetric.target / overallRegTarget) * 100 : 0;
+    const overallRates = getStageRates({ funnel: overallFunnel }, stage.key, index);
+    const overallActualRate = overallRates.actualRate;
+    const overallTargetRate = overallRates.targetRate;
+
+    const isOverallWeak = state.funnelViewMode === 'counts' && state.funnelHighlightMode === 'none' && overallMetric.actual < overallMetric.target;
+    const overallBgClass = isOverallWeak
+      ? 'bg-rose-950/45 border border-rose-500/40 relative shadow-[inset_0_0_8px_rgba(244,63,94,0.25)]'
+      : '';
+
     const overallStageCell = `
-      <div class="${stickyOverallClass} border-l border-t border-slate-800/60 p-1.5" style="left: ${labelWidth}px;">
+      <div class="${stickyOverallClass} border-l border-t border-slate-800/60 p-1.5 ${overallBgClass}" style="left: ${labelWidth}px;">
         <div class="w-full text-left">
           <div class="flex items-center justify-between gap-1">
             <span class="text-[9px] text-slate-400 font-semibold truncate">
@@ -1041,7 +1140,7 @@ function renderTeamFunnelComparisonMatrix() {
           <div class="mt-1 w-full bg-slate-700/70 rounded-md h-3.5 relative flex items-center overflow-hidden border border-slate-600/70">
             <div class="bg-gradient-to-r ${overallClasses.bar} h-full rounded-l-lg opacity-85" style="width: ${Math.min(overallActualRate, 100)}%"></div>
             <span class="absolute left-2 text-[8px] font-bold text-white drop-shadow">${overallActualRate.toFixed(1)}%</span>
-            <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(overallTargetRate, 100)}%" title="目標全体比: ${overallTargetRate.toFixed(1)}%"></div>
+            <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(overallTargetRate, 100)}%" title="目標比: ${overallTargetRate.toFixed(1)}%"></div>
           </div>
         </div>
       </div>
@@ -1051,26 +1150,58 @@ function renderTeamFunnelComparisonMatrix() {
       const fData = item.funnel;
       const metric = fData[stage.key];
       const classes = FUNNEL_STAGE_CLASSES[stage.accent];
-      const regActual = fData.registrations.actual || 1;
-      const regTarget = fData.registrations.target || 1;
-      const overallActualRate = regActual > 0 ? (metric.actual / regActual) * 100 : 0;
-      const overallTargetRate = regTarget > 0 ? (metric.target / regTarget) * 100 : 0;
+      
+      const itemRates = getStageRates(item, stage.key, index);
+      const actualRate = itemRates.actualRate;
+      const targetRate = itemRates.targetRate;
+
+      // Determine worst performer in row/column highlights
+      let isWorstStage = false;
+      if (state.funnelViewMode === 'counts' && state.funnelHighlightMode === 'row' && rowWorstInfo[stage.key]?.minItemIds.includes(item.id)) {
+        isWorstStage = true;
+      } else if (state.funnelViewMode === 'counts' && state.funnelHighlightMode === 'column' && colWorstInfo[item.id]?.type === 'stage' && colWorstInfo[item.id]?.key === stage.key) {
+        isWorstStage = true;
+      }
+      const isWeakStage = state.funnelViewMode === 'counts' && state.funnelHighlightMode === 'none' && metric.actual < metric.target;
+
+      const cellBgClass = (isWorstStage || isWeakStage)
+        ? 'bg-rose-950/45 border border-rose-500/40 relative shadow-[inset_0_0_8px_rgba(244,63,94,0.25)]'
+        : 'bg-slate-800/25 relative';
+
+      const countsHtml = `
+        <span>
+          <strong class="text-[10.5px] text-white font-extrabold">${metric.actual.toLocaleString()}</strong>
+          <span class="text-slate-600">/</span>
+          <strong class="text-[10.5px] text-slate-300 font-extrabold">${metric.target.toLocaleString()}</strong>
+        </span>
+      `;
+
+      const rateBarClass = (isWorstStage || isWeakStage) ? 'from-rose-500 to-rose-400' : classes.bar;
+      const rateContainerStyle = (isWorstStage || isWeakStage)
+        ? 'border border-rose-500/40 bg-rose-950/20 shadow-[inset_0_0_6px_rgba(244,63,94,0.2)]'
+        : 'border border-slate-600/70 bg-slate-700/70';
+      const rateTextStyle = (isWorstStage || isWeakStage) ? 'text-rose-300 drop-shadow' : 'text-white drop-shadow';
+
+      const rateHtml = `
+        <div class="mt-1 w-full rounded-md h-3.5 relative flex items-center overflow-hidden ${rateContainerStyle}">
+          <div class="bg-gradient-to-r ${rateBarClass} h-full rounded-l-lg opacity-85" style="width: ${Math.min(actualRate, 100)}%"></div>
+          <span class="absolute left-2 text-[8px] font-bold ${rateTextStyle}">${actualRate.toFixed(1)}%</span>
+          <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(targetRate, 100)}%" title="目標比: ${targetRate.toFixed(1)}%"></div>
+        </div>
+      `;
+
+      const badgeHtml = isWorstStage ? `<span class="absolute top-1 right-1 px-1 rounded bg-rose-500/25 text-rose-300 text-[8px] font-extrabold tracking-tight scale-90 z-20">要注意</span>` : '';
 
       return `
-        <div class="border-l border-t border-slate-700/60 p-1.5 bg-slate-800/25">
+        <div class="border-l border-t border-slate-700/60 p-1.5 ${cellBgClass}">
+          ${badgeHtml}
           <div class="w-full text-left">
             <div class="flex items-center justify-between gap-1">
               <span class="text-[9px] text-slate-400 font-semibold truncate">
-                <strong class="text-[10.5px] text-white font-extrabold">${metric.actual.toLocaleString()}</strong>
-                <span class="text-slate-600">/</span>
-                <strong class="text-[10.5px] text-slate-300 font-extrabold">${metric.target.toLocaleString()}</strong>
+                ${countsHtml}
               </span>
             </div>
-            <div class="mt-1 w-full bg-slate-700/70 rounded-md h-3.5 relative flex items-center overflow-hidden border border-slate-600/70">
-              <div class="bg-gradient-to-r ${classes.bar} h-full rounded-l-lg opacity-85" style="width: ${Math.min(overallActualRate, 100)}%"></div>
-              <span class="absolute left-2 text-[8px] font-bold text-white drop-shadow">${overallActualRate.toFixed(1)}%</span>
-              <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(overallTargetRate, 100)}%" title="目標全体比: ${overallTargetRate.toFixed(1)}%"></div>
-            </div>
+            ${rateHtml}
           </div>
         </div>
       `;
@@ -1101,12 +1232,12 @@ function renderTeamFunnelComparisonMatrix() {
         const transitionRate = prevMetric.actual > 0 ? (metric.actual / prevMetric.actual) * 100 : 0;
         const targetTransitionRate = prevMetric.target > 0 ? (metric.target / prevMetric.target) * 100 : 0;
         const transitionGap = transitionRate - targetTransitionRate;
-        const isWeakTransition = transitionGap < 0;
+        const isWeakTransition = state.funnelViewMode === 'efficiency' && state.funnelHighlightMode === 'none' && transitionGap < 0;
         const transitionBarClass = transitionGap >= 0
           ? 'bg-emerald-400'
-          : transitionGap >= -3
-            ? 'bg-slate-300/80'
-            : 'bg-rose-400';
+          : (state.funnelViewMode === 'efficiency' && transitionGap < -3)
+            ? 'bg-rose-400'
+            : 'bg-slate-300/80';
         return `
           <div class="${stickyOverallClass} funnel-transition-cell ${isWeakTransition ? 'is-weak bg-rose-950' : ''} border-l border-t border-slate-800/60 px-1.5 py-1 flex flex-col justify-center gap-1" style="left: ${labelWidth}px;">
             <div class="w-full text-left flex items-center justify-between gap-2 leading-none">
@@ -1130,12 +1261,38 @@ function renderTeamFunnelComparisonMatrix() {
         const transitionRate = prevMetric.actual > 0 ? (metric.actual / prevMetric.actual) * 100 : 0;
         const targetTransitionRate = prevMetric.target > 0 ? (metric.target / prevMetric.target) * 100 : 0;
         const transitionGap = transitionRate - targetTransitionRate;
-        const isWeakTransition = transitionGap < 0;
-        const transitionBarClass = transitionGap >= 0
-          ? 'bg-emerald-400'
-          : transitionGap >= -3
-            ? 'bg-slate-300/80'
-            : 'bg-rose-400';
+        const isWeakTransition = transitionGap < 0 && state.funnelViewMode === 'efficiency';
+
+        let isWorstTrans = false;
+        if (state.funnelViewMode === 'efficiency') {
+          if (state.funnelHighlightMode === 'row' && transitionWorstInfo[stage.key]?.minItemIds.includes(item.id)) {
+            isWorstTrans = true;
+          } else if (state.funnelHighlightMode === 'column' && colWorstInfo[item.id]?.type === 'transition' && colWorstInfo[item.id]?.key === stage.key) {
+            isWorstTrans = true;
+          }
+        }
+
+        let transitionBarClass = 'bg-slate-300/80';
+        if (transitionGap >= 0) {
+          transitionBarClass = 'bg-emerald-400';
+        } else if (state.funnelViewMode === 'efficiency') {
+          if (state.funnelHighlightMode === 'none') {
+            if (transitionGap < -3) {
+              transitionBarClass = 'bg-rose-400';
+            }
+          } else {
+            if (isWorstTrans) {
+              transitionBarClass = 'bg-rose-400';
+            }
+          }
+        }
+
+        const showWeakBg = state.funnelHighlightMode === 'none' && isWeakTransition;
+        const transBgClass = isWorstTrans
+          ? 'is-worst bg-rose-950/60 border border-rose-500/40 relative shadow-[inset_0_0_8px_rgba(244,63,94,0.25)]'
+          : (showWeakBg ? 'is-weak bg-rose-500/10' : 'bg-slate-950/30');
+        const badgeTransHtml = isWorstTrans ? `<span class="absolute top-0.5 right-1 px-1 rounded bg-rose-500/25 text-rose-300 text-[7.5px] font-extrabold tracking-tight scale-90 z-20">要注意</span>` : '';
+
         const panelId = `team-compare-${mode}-${item.id}-${stage.key}-actions`;
         const actionItems = getProcessActionChecks(stage.key, fData, mode === 'member' ? 'member' : 'team');
         const actionPanel = `
@@ -1170,7 +1327,8 @@ function renderTeamFunnelComparisonMatrix() {
           </div>
         `;
         return `
-          <div class="funnel-transition-cell ${isWeakTransition ? 'is-weak bg-rose-500/10' : 'bg-slate-950/30'} border-l border-t border-slate-800/60 px-1.5 py-1 flex flex-col justify-center gap-1">
+          <div class="funnel-transition-cell ${transBgClass} border-l border-t border-slate-800/60 px-1.5 py-1 flex flex-col justify-center gap-1 relative">
+            ${badgeTransHtml}
             <div class="w-full text-left flex items-center justify-between gap-2 leading-none">
               <span class="text-[8.5px] whitespace-nowrap text-slate-200">
                 <strong>${transitionRate.toFixed(1)}%</strong>
@@ -1218,11 +1376,27 @@ function renderTeamFunnelComparisonMatrix() {
     footerRow = `${leftFooterCell}${overallFooterCell}${itemFooterCells}`;
   }
 
+  // Define controls for sticky top-left cell
+  const viewModeSegment = `
+    <div class="inline-flex rounded bg-slate-900 border border-slate-700/60 p-0.5 w-full z-50">
+      <button onclick="setFunnelViewMode('counts')" class="flex-1 text-[8px] font-extrabold py-0.5 px-0.5 rounded transition-all ${state.funnelViewMode === 'counts' ? 'bg-brand-blue text-white shadow-sm' : 'text-slate-400 hover:text-white'}">求職者数</button>
+      <button onclick="setFunnelViewMode('efficiency')" class="flex-1 text-[8px] font-extrabold py-0.5 px-0.5 rounded transition-all ${state.funnelViewMode === 'efficiency' ? 'bg-brand-blue text-white shadow-sm' : 'text-slate-400 hover:text-white'}">プロセス効率</button>
+    </div>
+  `;
+
+  const highlightSelect = `
+    <div class="inline-flex rounded bg-slate-900 border border-slate-700/60 p-0.5 w-full z-50">
+      <button onclick="setFunnelHighlightMode('row')" class="flex-1 text-[8px] font-extrabold py-0.5 px-0.5 rounded transition-all ${state.funnelHighlightMode === 'row' ? 'bg-rose-500/25 border border-rose-500/45 text-rose-300' : 'text-slate-400 hover:text-white'}">行評価</button>
+      <button onclick="setFunnelHighlightMode('column')" class="flex-1 text-[8px] font-extrabold py-0.5 px-0.5 rounded transition-all ${state.funnelHighlightMode === 'column' ? 'bg-rose-500/25 border border-rose-500/45 text-rose-300' : 'text-slate-400 hover:text-white'}">列評価</button>
+      <button onclick="setFunnelHighlightMode('none')" class="flex-1 text-[8px] font-extrabold py-0.5 px-0.5 rounded transition-all ${state.funnelHighlightMode === 'none' ? 'bg-slate-800 text-slate-300' : 'text-slate-500 hover:text-slate-300'}">オフ</button>
+    </div>
+  `;
+
   matrix.innerHTML = `
     <div class="inline-grid min-w-full rounded-xl border border-slate-700/80 bg-slate-800/35" style="grid-template-columns: ${labelWidth}px ${columnWidth}px repeat(${visibleItems.length}, ${columnWidth}px);">
-      <div class="${stickyLabelClass} p-2">
-        <p class="text-xs font-bold text-slate-200">比較指標</p>
-        <p class="text-[8.5px] text-slate-500 mt-1">工程名は左固定</p>
+      <div class="${stickyLabelClass} matrix-control-cell p-1.5 flex flex-col justify-center gap-1 h-full min-h-[44px]">
+        ${viewModeSegment}
+        ${highlightSelect}
       </div>
       ${overallHeaderCell}
       ${headerCells}
@@ -1251,6 +1425,24 @@ function renderTeamFunnelComparisonMatrix() {
 
   lucide.createIcons();
 }
+
+window.setFunnelViewMode = function(mode) {
+  state.funnelViewMode = mode;
+  renderTeamFunnelComparisonMatrix();
+  const activeTab = state.currentTab;
+  if (activeTab === 'cross') {
+    renderSegmentDetail(state.crossTab.selectedRow, state.crossTab.selectedCol, state.crossTab.rowAxis, state.crossTab.colAxis);
+  }
+};
+
+window.setFunnelHighlightMode = function(mode) {
+  state.funnelHighlightMode = mode;
+  renderTeamFunnelComparisonMatrix();
+  const activeTab = state.currentTab;
+  if (activeTab === 'cross') {
+    renderSegmentDetail(state.crossTab.selectedRow, state.crossTab.selectedCol, state.crossTab.rowAxis, state.crossTab.colAxis);
+  }
+};
 
 function toggleTeamComparisonVisibility(itemId) {
   const mode = state.funnelComparisonMode || 'team';
@@ -1322,7 +1514,7 @@ window.openTeamMemberDetail = function(teamId) {
 function sortComparisonByStage(stageKey, type = 'metric') {
   const current = state.funnelComparisonSort || {};
   const isSameSort = current.stageKey === stageKey && current.type === type;
-  const nextDirection = isSameSort && current.direction === 'desc' ? 'asc' : 'desc';
+  const nextDirection = isSameSort && current.direction === 'asc' ? 'desc' : 'asc';
   state.funnelComparisonSort = { stageKey, type, direction: nextDirection };
   renderTeamFunnelComparisonMatrix();
 }
@@ -2771,7 +2963,7 @@ function renderFunnel() {
   if (!container || !bottleneckContainer || !dashboardData.teamsData) return;
 
   const team = state.selectedTeam === 'all'
-    ? { name: '全体', funnel: aggregateFunnelData() }
+      ? { name: '全体', funnel: aggregateFunnelData() }
     : dashboardData.teamsData[state.selectedTeam];
   if (!team) return;
   const fData = team.funnel;
@@ -5375,10 +5567,83 @@ function renderSegmentDetail(rowVal, colVal, rowAxis, colAxis) {
     };
   });
 
-  const labelWidth = 142;
+  const labelWidth = 170;
   const columnWidth = 173;
   const stickyLabelClass = 'sticky left-0 z-50 bg-[#202b3f] border-r border-slate-700/80';
   const stickyOverallClass = 'sticky z-40 bg-[#202b3f] border-r border-slate-700/80';
+
+  const getStageRates = (itemFunnel, stageKey, idx) => {
+    const metric = itemFunnel[stageKey];
+    if (!metric) return { actualRate: 0, targetRate: 0, ratio: 1 };
+
+    const actualRate = metric.target > 0 ? (metric.actual / metric.target) * 100 : 0;
+    const targetRate = 100;
+    const ratio = actualRate / 100;
+    return { actualRate, targetRate, ratio };
+  };
+
+  const getTransitionRates = (itemFunnel, stageKey, idx) => {
+    if (idx === 0) return { actualRate: 100, targetRate: 100, ratio: 1 };
+    const metric = itemFunnel[stageKey];
+    const prevStage = FUNNEL_STAGES[idx - 1];
+    const prevActual = itemFunnel[prevStage.key].actual || 0;
+    const prevTarget = itemFunnel[prevStage.key].target || 0;
+
+    const actualRate = prevActual > 0 ? (metric.actual / prevActual) * 100 : 0;
+    const targetRate = prevTarget > 0 ? (metric.target / prevTarget) * 100 : 0;
+    const ratio = targetRate > 0 ? (actualRate / targetRate) : (actualRate > 0 ? 1 : 0);
+    return { actualRate, targetRate, ratio };
+  };
+
+  // Highlighting calculations for segment vs overall
+  const worstInfo = { stage: {}, transition: {} };
+  
+  if (state.funnelHighlightMode === 'row') {
+    if (state.funnelViewMode === 'efficiency') {
+      FUNNEL_STAGES.forEach((stage, idx) => {
+        if (idx === 0) return;
+        const overallRatio = getTransitionRates(overallFunnel, stage.key, idx).ratio;
+        const segmentRatio = getTransitionRates(segmentFunnel, stage.key, idx).ratio;
+        if (segmentRatio <= overallRatio) {
+          worstInfo.transition[stage.key] = true;
+        }
+      });
+    } else {
+      FUNNEL_STAGES.forEach((stage, idx) => {
+        const overallRatio = getStageRates(overallFunnel, stage.key, idx).ratio;
+        const segmentRatio = getStageRates(segmentFunnel, stage.key, idx).ratio;
+        if (segmentRatio <= overallRatio) {
+          worstInfo.stage[stage.key] = true;
+        }
+      });
+    }
+  } else if (state.funnelHighlightMode === 'column') {
+    let minRatio = Infinity;
+    let worstCell = null;
+
+    if (state.funnelViewMode === 'efficiency') {
+      FUNNEL_STAGES.forEach((stage, idx) => {
+        if (idx === 0) return;
+        const { ratio } = getTransitionRates(segmentFunnel, stage.key, idx);
+        if (ratio < minRatio) {
+          minRatio = ratio;
+          worstCell = { type: 'transition', key: stage.key };
+        }
+      });
+    } else {
+      FUNNEL_STAGES.forEach((stage, idx) => {
+        const { ratio } = getStageRates(segmentFunnel, stage.key, idx);
+        if (ratio < minRatio) {
+          minRatio = ratio;
+          worstCell = { type: 'stage', key: stage.key };
+        }
+      });
+    }
+
+    if (worstCell) {
+      worstInfo[worstCell.type][worstCell.key] = true;
+    }
+  }
 
   const overallHeaderCell = `
     <div class="${stickyOverallClass} team-funnel-compare-col border-l border-slate-800/70 p-2" style="left: ${labelWidth}px;">
@@ -5398,16 +5663,14 @@ function renderSegmentDetail(rowVal, colVal, rowAxis, colAxis) {
   FUNNEL_STAGES.forEach((stage, index) => {
     const overallMetric = overallFunnel[stage.key];
     const overallClasses = FUNNEL_STAGE_CLASSES[stage.accent];
-    const overallRegActual = overallFunnel.registrations.actual || 1;
-    const overallRegTarget = overallFunnel.registrations.target || 1;
-    const overallActualRate = overallRegActual > 0 ? (overallMetric.actual / overallRegActual) * 100 : 0;
-    const overallTargetRate = overallRegTarget > 0 ? (overallMetric.target / overallRegTarget) * 100 : 0;
+    const overallRates = getStageRates(overallFunnel, stage.key, index);
+    const overallActualRate = overallRates.actualRate;
+    const overallTargetRate = overallRates.targetRate;
 
     const segmentMetric = segmentFunnel[stage.key];
-    const segmentRegActual = segmentFunnel.registrations.actual || 1;
-    const segmentRegTarget = segmentFunnel.registrations.target || 1;
-    const segmentActualRate = segmentRegActual > 0 ? (segmentMetric.actual / segmentRegActual) * 100 : 0;
-    const segmentTargetRate = segmentRegTarget > 0 ? (segmentMetric.target / segmentRegTarget) * 100 : 0;
+    const segmentRates = getStageRates(segmentFunnel, stage.key, index);
+    const segmentActualRate = segmentRates.actualRate;
+    const segmentTargetRate = segmentRates.targetRate;
 
     // Stage row label cell
     const labelCell = `
@@ -5423,9 +5686,14 @@ function renderSegmentDetail(rowVal, colVal, rowAxis, colAxis) {
       </div>
     `;
 
-    // Overall metrics for this stage
+    // Overall metrics for this stage with target achievement failure highlighting
+    const isOverallWeak = state.funnelViewMode === 'counts' && state.funnelHighlightMode === 'none' && overallMetric.actual < overallMetric.target;
+    const overallBgClass = isOverallWeak
+      ? 'bg-rose-950/45 border border-rose-500/40 relative shadow-[inset_0_0_8px_rgba(244,63,94,0.25)]'
+      : '';
+
     const overallStageCell = `
-      <div class="${stickyOverallClass} border-l border-t border-slate-800/60 p-1.5" style="left: ${labelWidth}px;">
+      <div class="${stickyOverallClass} border-l border-t border-slate-800/60 p-1.5 ${overallBgClass}" style="left: ${labelWidth}px;">
         <div class="w-full text-left">
           <div class="flex items-center justify-between gap-1">
             <span class="text-[9px] text-slate-400 font-semibold truncate">
@@ -5437,28 +5705,54 @@ function renderSegmentDetail(rowVal, colVal, rowAxis, colAxis) {
           <div class="mt-1 w-full bg-slate-700/70 rounded-md h-3.5 relative flex items-center overflow-hidden border border-slate-600/70">
             <div class="bg-gradient-to-r ${overallClasses.bar} h-full rounded-l-lg opacity-85" style="width: ${Math.min(overallActualRate, 100)}%"></div>
             <span class="absolute left-2 text-[8px] font-bold text-white drop-shadow">${overallActualRate.toFixed(1)}%</span>
-            <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(overallTargetRate, 100)}%"></div>
+            <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(overallTargetRate, 100)}%" title="目標比: ${overallTargetRate.toFixed(1)}%"></div>
           </div>
         </div>
       </div>
     `;
 
+    // Segment cell highlighting
+    const isWorstStage = state.funnelViewMode === 'counts' && (worstInfo.stage[stage.key] || false);
+    const isWeakStage = state.funnelViewMode === 'counts' && state.funnelHighlightMode === 'none' && segmentMetric.actual < segmentMetric.target;
+    const cellBgClass = (isWorstStage || isWeakStage)
+      ? 'bg-rose-950/45 border border-rose-500/40 relative shadow-[inset_0_0_8px_rgba(244,63,94,0.25)]'
+      : 'bg-slate-800/25 relative';
+
+    const countsHtml = `
+      <span>
+        <strong class="text-[10.5px] text-white font-extrabold">${segmentMetric.actual.toLocaleString()}</strong>
+        <span class="text-slate-600">/</span>
+        <strong class="text-[10.5px] text-slate-300 font-extrabold">${segmentMetric.target.toLocaleString()}</strong>
+      </span>
+    `;
+
+    const rateBarClass = (isWorstStage || isWeakStage) ? 'from-rose-500 to-rose-400' : overallClasses.bar;
+    const rateContainerStyle = (isWorstStage || isWeakStage)
+      ? 'border border-rose-500/40 bg-rose-950/20 shadow-[inset_0_0_6px_rgba(244,63,94,0.2)]'
+      : 'border border-slate-600/70 bg-slate-700/70';
+    const rateTextStyle = (isWorstStage || isWeakStage) ? 'text-rose-300 drop-shadow' : 'text-white drop-shadow';
+
+    const rateHtml = `
+      <div class="mt-1 w-full rounded-md h-3.5 relative flex items-center overflow-hidden ${rateContainerStyle}">
+        <div class="bg-gradient-to-r ${rateBarClass} h-full rounded-l-lg opacity-85" style="width: ${Math.min(segmentActualRate, 100)}%"></div>
+        <span class="absolute left-2 text-[8px] font-bold ${rateTextStyle}">${segmentActualRate.toFixed(1)}%</span>
+        <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(segmentTargetRate, 100)}%" title="目標比: ${segmentTargetRate.toFixed(1)}%"></div>
+      </div>
+    `;
+
+    const badgeHtml = isWorstStage ? `<span class="absolute top-1 right-1 px-1 rounded bg-rose-500/25 text-rose-300 text-[8px] font-extrabold tracking-tight scale-90 z-20">要注意</span>` : '';
+
     // Segment metrics for this stage
     const segmentStageCell = `
-      <div class="border-l border-t border-slate-700/60 p-1.5 bg-slate-800/25">
+      <div class="border-l border-t border-slate-700/60 p-1.5 ${cellBgClass}">
+        ${badgeHtml}
         <div class="w-full text-left">
           <div class="flex items-center justify-between gap-1">
             <span class="text-[9px] text-slate-400 font-semibold truncate">
-              <strong class="text-[10.5px] text-white font-extrabold">${segmentMetric.actual.toLocaleString()}</strong>
-              <span class="text-slate-600">/</span>
-              <strong class="text-[10.5px] text-slate-300 font-extrabold">${segmentMetric.target.toLocaleString()}</strong>
+              ${countsHtml}
             </span>
           </div>
-          <div class="mt-1 w-full bg-slate-700/70 rounded-md h-3.5 relative flex items-center overflow-hidden border border-slate-600/70">
-            <div class="bg-gradient-to-r ${overallClasses.bar} h-full rounded-l-lg opacity-85" style="width: ${Math.min(segmentActualRate, 100)}%"></div>
-            <span class="absolute left-2 text-[8px] font-bold text-white drop-shadow">${segmentActualRate.toFixed(1)}%</span>
-            <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-emerald-400 z-20 w-0" style="left: ${Math.min(segmentTargetRate, 100)}%"></div>
-          </div>
+          ${rateHtml}
         </div>
       </div>
     `;
@@ -5484,8 +5778,12 @@ function renderSegmentDetail(rowVal, colVal, rowAxis, colAxis) {
       const overallTransitionRate = prevOverallMetric.actual > 0 ? (overallMetric.actual / prevOverallMetric.actual) * 100 : 0;
       const overallTargetTransitionRate = prevOverallMetric.target > 0 ? (overallMetric.target / prevOverallMetric.target) * 100 : 0;
       const overallTransitionGap = overallTransitionRate - overallTargetTransitionRate;
-      const overallIsWeak = overallTransitionGap < 0;
-      const overallTransitionBarClass = overallTransitionGap >= 0 ? 'bg-emerald-400' : (overallTransitionGap >= -3 ? 'bg-slate-300/80' : 'bg-rose-400');
+      const overallIsWeak = state.funnelViewMode === 'efficiency' && state.funnelHighlightMode === 'none' && overallTransitionGap < 0;
+      const overallTransitionBarClass = overallTransitionGap >= 0
+        ? 'bg-emerald-400'
+        : (state.funnelViewMode === 'efficiency' && overallTransitionGap < -3)
+          ? 'bg-rose-400'
+          : 'bg-slate-300/80';
       const overallTransitionCell = `
         <div class="${stickyOverallClass} funnel-transition-cell ${overallIsWeak ? 'is-weak bg-rose-950' : ''} border-l border-t border-slate-800/60 px-1.5 py-1 flex flex-col justify-center gap-1" style="left: ${labelWidth}px;">
           <div class="w-full text-left flex items-center justify-between gap-2 leading-none">
@@ -5503,12 +5801,34 @@ function renderSegmentDetail(rowVal, colVal, rowAxis, colAxis) {
 
       // Segment transition rate & toggleable action checklists
       const prevSegmentMetric = segmentFunnel[prevStage.key];
-      const segmentTransitionRate = prevSegmentMetric.actual > 0 ? (segmentMetric.actual / prevSegmentMetric.actual) * 100 : 0;
-      const segmentTargetTransitionRate = prevSegmentMetric.target > 0 ? (segmentMetric.target / prevSegmentMetric.target) * 100 : 0;
+      const transRates = getTransitionRates(segmentFunnel, stage.key, index);
+      const segmentTransitionRate = transRates.actualRate;
+      const segmentTargetTransitionRate = transRates.targetRate;
       const segmentTransitionGap = segmentTransitionRate - segmentTargetTransitionRate;
-      const segmentIsWeak = segmentTransitionGap < 0;
-      const segmentTransitionBarClass = segmentTransitionGap >= 0 ? 'bg-emerald-400' : (segmentTransitionGap >= -3 ? 'bg-slate-300/80' : 'bg-rose-400');
-      
+      const segmentIsWeak = segmentTransitionGap < 0 && state.funnelViewMode === 'efficiency';
+
+      // Segment transition worst highlighting
+      const isSegmentTransWorst = worstInfo.transition[stage.key] || false;
+
+      let segmentTransitionBarClass = 'bg-slate-300/80';
+      if (segmentTransitionGap >= 0) {
+        segmentTransitionBarClass = 'bg-emerald-400';
+      } else if (state.funnelViewMode === 'efficiency') {
+        if (state.funnelHighlightMode === 'none') {
+          if (segmentTransitionGap < -3) {
+            segmentTransitionBarClass = 'bg-rose-400';
+          }
+        } else {
+          if (isSegmentTransWorst) {
+            segmentTransitionBarClass = 'bg-rose-400';
+          }
+        }
+      }
+
+      const showSegmentWeakBg = state.funnelHighlightMode === 'none' && segmentIsWeak && state.funnelViewMode === 'efficiency';
+      const transBgClass = (isSegmentTransWorst && state.funnelViewMode === 'efficiency') ? 'is-worst bg-rose-950/60 border-rose-500/40 relative shadow-[inset_0_0_8px_rgba(244,63,94,0.25)]' : (showSegmentWeakBg ? 'is-weak bg-rose-500/10' : 'bg-slate-950/30');
+      const badgeTransHtml = (isSegmentTransWorst && state.funnelViewMode === 'efficiency') ? `<span class="absolute top-0.5 right-1 px-1 rounded bg-rose-500/25 text-rose-300 text-[7.5px] font-extrabold tracking-tight scale-90 z-20">要注意</span>` : '';
+
       const panelId = `cross-compare-${stage.key}-actions`;
       const actionItems = getProcessActionChecks(stage.key, segmentFunnel, 'team');
       const actionPanel = `
@@ -5536,7 +5856,8 @@ function renderSegmentDetail(rowVal, colVal, rowAxis, colAxis) {
       `;
 
       const segmentTransitionCell = `
-        <div class="funnel-transition-cell ${segmentIsWeak ? 'is-weak bg-rose-500/10' : 'bg-slate-950/30'} border-l border-t border-slate-800/60 px-1.5 py-1 flex flex-col justify-center gap-1">
+        <div class="funnel-transition-cell ${transBgClass} border-l border-t border-slate-800/60 px-1.5 py-1 flex flex-col justify-center gap-1 relative">
+          ${badgeTransHtml}
           <div class="w-full text-left flex items-center justify-between gap-2 leading-none">
             <span class="text-[8.5px] whitespace-nowrap text-slate-200">
               <strong>${segmentTransitionRate.toFixed(1)}%</strong>
@@ -5557,6 +5878,22 @@ function renderSegmentDetail(rowVal, colVal, rowAxis, colAxis) {
     stageRowsHtml += `${transitionRow}${labelCell}${overallStageCell}${segmentStageCell}`;
   });
 
+  // Controls for sticky top-left cell
+  const viewModeSegment = `
+    <div class="inline-flex rounded bg-slate-900 border border-slate-700/60 p-0.5 w-full z-50">
+      <button onclick="setFunnelViewMode('counts')" class="flex-1 text-[8px] font-extrabold py-0.5 px-0.5 rounded transition-all ${state.funnelViewMode === 'counts' ? 'bg-brand-blue text-white shadow-sm' : 'text-slate-400 hover:text-white'}">求職者数</button>
+      <button onclick="setFunnelViewMode('efficiency')" class="flex-1 text-[8px] font-extrabold py-0.5 px-0.5 rounded transition-all ${state.funnelViewMode === 'efficiency' ? 'bg-brand-blue text-white shadow-sm' : 'text-slate-400 hover:text-white'}">プロセス効率</button>
+    </div>
+  `;
+
+  const highlightSelect = `
+    <div class="inline-flex rounded bg-slate-900 border border-slate-700/60 p-0.5 w-full z-50">
+      <button onclick="setFunnelHighlightMode('row')" class="flex-1 text-[8px] font-extrabold py-0.5 px-0.5 rounded transition-all ${state.funnelHighlightMode === 'row' ? 'bg-rose-500/25 border border-rose-500/45 text-rose-300' : 'text-slate-400 hover:text-white'}">行評価</button>
+      <button onclick="setFunnelHighlightMode('column')" class="flex-1 text-[8px] font-extrabold py-0.5 px-0.5 rounded transition-all ${state.funnelHighlightMode === 'column' ? 'bg-rose-500/25 border border-rose-500/45 text-rose-300' : 'text-slate-400 hover:text-white'}">列評価</button>
+      <button onclick="setFunnelHighlightMode('none')" class="flex-1 text-[8px] font-extrabold py-0.5 px-0.5 rounded transition-all ${state.funnelHighlightMode === 'none' ? 'bg-slate-800 text-slate-300' : 'text-slate-500 hover:text-slate-300'}">オフ</button>
+    </div>
+  `;
+
   let html = `
     <div class="mb-5">
       <h3 class="text-base font-bold text-white">${rowVal} × ${colVal} のファネル分析</h3>
@@ -5564,9 +5901,9 @@ function renderSegmentDetail(rowVal, colVal, rowAxis, colAxis) {
 
     <div id="crossFunnelComparisonMatrix" class="team-funnel-compare-scroll overflow-x-auto pb-1 flex-1">
       <div class="inline-grid min-w-full rounded-xl border border-slate-700/80 bg-slate-800/35" style="grid-template-columns: ${labelWidth}px ${columnWidth}px ${columnWidth}px;">
-        <div class="${stickyLabelClass} p-2">
-          <p class="text-xs font-bold text-slate-200">比較指標</p>
-          <p class="text-[8.5px] text-slate-500 mt-1">工程名は左固定</p>
+        <div class="${stickyLabelClass} matrix-control-cell p-1.5 flex flex-col justify-center gap-1 h-full min-h-[44px]">
+          ${viewModeSegment}
+          ${highlightSelect}
         </div>
         ${overallHeaderCell}
         ${segmentHeaderCell}
@@ -5578,4 +5915,3 @@ function renderSegmentDetail(rowVal, colVal, rowAxis, colAxis) {
   container.innerHTML = html;
   lucide.createIcons();
 }
-
